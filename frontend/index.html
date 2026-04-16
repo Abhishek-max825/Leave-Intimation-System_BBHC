@@ -1,0 +1,225 @@
+<!DOCTYPE html>
+<html lang="en" class="h-full">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>AutoLeave AI – Smart Leave Intimation System</title>
+  <meta name="description" content="AutoLeave AI is a smart, AI-powered student leave management system for colleges. Apply, track, and manage leave requests with ease." />
+
+  <!-- Tailwind CSS -->
+  <script src="https://cdn.tailwindcss.com"></script>
+
+  <!-- Google Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet" />
+
+  <!-- React & ReactDOM -->
+  <script crossorigin src="https://unpkg.com/react@18/umd/react.development.js"></script>
+  <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+
+  <!-- Babel for JSX -->
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+
+  <!-- Lucide Icons -->
+  <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.js"></script>
+
+  <!-- Chart.js for statistics -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          fontFamily: {
+            sans: ['Inter', 'sans-serif'],
+          },
+          colors: {
+            teal: {
+              50: '#f0fdfa',
+              100: '#ccfbf1',
+              200: '#99f6e4',
+              300: '#5eead4',
+              400: '#2dd4bf',
+              500: '#14b8a6',
+              600: '#0d9488',
+              700: '#0f766e',
+              800: '#115e59',
+              900: '#134e4a',
+            }
+          },
+          animation: {
+            'shimmer': 'shimmer 1.5s infinite',
+            'pulse-soft': 'pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite',
+            'slide-in-up': 'slideInUp 0.3s ease-out',
+            'slide-in-right': 'slideInRight 0.3s ease-out',
+            'fade-in': 'fadeIn 0.4s ease-out',
+            'count-up': 'countUp 0.6s ease-out',
+            'spin-slow': 'spin 3s linear infinite',
+          },
+          keyframes: {
+            shimmer: {
+              '0%': { backgroundPosition: '-200% 0' },
+              '100%': { backgroundPosition: '200% 0' },
+            },
+            slideInUp: {
+              '0%': { transform: 'translateY(20px)', opacity: '0' },
+              '100%': { transform: 'translateY(0)', opacity: '1' },
+            },
+            slideInRight: {
+              '0%': { transform: 'translateX(20px)', opacity: '0' },
+              '100%': { transform: 'translateX(0)', opacity: '1' },
+            },
+            fadeIn: {
+              '0%': { opacity: '0' },
+              '100%': { opacity: '1' },
+            },
+          },
+          boxShadow: {
+            'card': '0 2px 15px -3px rgba(0, 0, 0, 0.07), 0 10px 20px -2px rgba(0, 0, 0, 0.04)',
+            'card-hover': '0 10px 40px -5px rgba(0, 0, 0, 0.12), 0 20px 25px -5px rgba(0, 0, 0, 0.07)',
+          }
+        }
+      }
+    }
+  </script>
+
+  <style>
+    :root {
+      --bg-page: #f8fafc;
+      --bg-sidebar: #ffffff;
+      --bg-card: #ffffff;
+      --primary: #2563eb;
+      --primary-hover: #1d4ed8;
+      --success: #16a34a;
+      --warning: #d97706;
+      --danger: #dc2626;
+      --text-primary: #0f172a;
+      --text-secondary: #64748b;
+      --text-muted: #94a3b8;
+      --border-default: #e2e8f0;
+      --border-strong: #cbd5e1;
+      --sidebar-active-bg: #eff6ff;
+      --sidebar-active-text: #2563eb;
+      --ring-focus: 0 0 0 3px rgba(37, 99, 235, 0.1);
+    }
+
+    * { box-sizing: border-box; }
+    html, body, #root { height: 100%; }
+    body { font-family: 'Inter', sans-serif; font-size: 14px; line-height: 1.6; background: var(--bg-page); color: var(--text-primary); }
+
+    /* Custom scrollbar */
+    ::-webkit-scrollbar { width: 6px; height: 6px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 10px; }
+    ::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
+
+    /* Shimmer animation */
+    .shimmer-bg {
+      background: #e2e8f0;
+      animation: subtlePulse 1.5s infinite;
+    }
+
+    /* Page transition */
+    .page-enter { animation: fadeIn 0.2s ease-out; }
+
+    /* Ring progress */
+    .ring-progress { transition: stroke-dasharray 1s ease; }
+
+    /* Toast animations */
+    .toast-enter { animation: slideInRight 0.3s ease-out; }
+    .toast-exit { animation: slideInRight 0.3s ease-out reverse; }
+
+    /* Smooth transitions */
+    .smooth-transition { transition: all 0.2s ease; }
+
+    /* Focus styles */
+    input:focus, select:focus, textarea:focus {
+      outline: none;
+      box-shadow: var(--ring-focus);
+    }
+
+    /* Card hover */
+    .card-hover { transition: background-color 0.2s ease; }
+    .card-hover:hover { transform: none; box-shadow: none; }
+
+    /* Button press */
+    .btn-press:active { transform: scale(0.97); }
+
+    /* Notification pulse */
+    @keyframes notif-pulse {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.6; }
+    }
+    .notif-pulse { animation: notif-pulse 2s infinite; }
+
+    /* Custom select arrow */
+    select { appearance: none; background-image: none; }
+
+    /* Sidebar transition */
+    .sidebar-transition { transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1); }
+
+    /* Number counter animation */
+    @keyframes countUp {
+      from { opacity: 0; transform: translateY(10px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+    .number-animate { animation: none; }
+
+    /* Mobile bottom nav */
+    @media (max-width: 768px) {
+      .main-content { padding-bottom: 80px; }
+    }
+
+    /* Status dots */
+    .status-dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; }
+
+    /* Gradient accent line */
+    .accent-line {
+      background: var(--border-default);
+      height: 3px;
+      border-radius: 2px;
+    }
+
+    .pro-surface {
+      background: var(--bg-card);
+      border: 1px solid var(--border-default);
+      box-shadow: none;
+    }
+
+    .app-shell {
+      max-width: 1280px;
+      margin: 0 auto;
+      width: 100%;
+    }
+
+    .content-wrap {
+      padding-left: 0.5rem;
+      padding-right: 0.5rem;
+    }
+
+    @media (min-width: 1024px) {
+      .content-wrap {
+        padding-left: 1.75rem;
+        padding-right: 1.75rem;
+      }
+    }
+
+    @keyframes subtlePulse {
+      0%, 100% { opacity: 0.6; }
+      50% { opacity: 1; }
+    }
+  </style>
+</head>
+<body class="h-full bg-slate-50 text-slate-900">
+  <div id="root" class="h-full"></div>
+
+  <script type="text/babel" src="js/mockData.js"></script>
+  <script type="text/babel" src="js/services.js"></script>
+  <script type="text/babel" src="js/firebase.js"></script>
+  <script type="text/babel" src="js/components.js"></script>
+  <script type="text/babel" src="js/pages.js"></script>
+  <script type="text/babel" src="js/app.js"></script>
+</body>
+</html>
