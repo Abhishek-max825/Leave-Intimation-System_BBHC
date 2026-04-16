@@ -30,11 +30,15 @@ const applyLeave = async (req, res, next) => {
       return res.status(404).json({ message: "Student not found." });
     }
 
-    const pastLeavesCount = await Leave.countDocuments({ studentId });
-    const predictionScore = predictApproval({
+    const pastLeaves = await Leave.countDocuments({ studentId });
+    const pastRejections = await Leave.countDocuments({ studentId, status: "rejected" });
+
+    const prediction = predictApproval({
       attendance: Number(attendance),
       leaveType,
-      pastLeavesCount,
+      duration: Number(duration),
+      pastLeaves,
+      pastRejections,
     });
 
     const leave = await Leave.create({
@@ -44,10 +48,13 @@ const applyLeave = async (req, res, next) => {
       duration,
       reason,
       status: "pending",
-      predictionScore,
+      predictionScore: prediction.predictionScore,
     });
 
-    return res.status(201).json(formatLeaveResponse(leave));
+    return res.status(201).json({
+      ...formatLeaveResponse(leave),
+      prediction,
+    });
   } catch (error) {
     return next(error);
   }
