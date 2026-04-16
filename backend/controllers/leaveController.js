@@ -1,7 +1,7 @@
 const mongoose = require("mongoose");
 const Leave = require("../models/Leave");
 const User = require("../models/User");
-const { predictApproval } = require("../services/predictionService");
+const predictApproval = require("../services/predictionService");
 
 const formatLeaveResponse = (leave) => ({
   leaveId: leave._id,
@@ -51,9 +51,13 @@ const applyLeave = async (req, res, next) => {
       predictionScore: prediction.predictionScore,
     });
 
+    console.log("Notification: Leave applied");
+
     return res.status(201).json({
       ...formatLeaveResponse(leave),
-      prediction,
+      predictionScore: prediction.predictionScore,
+      decision: prediction.decision,
+      reason: prediction.reason,
     });
   } catch (error) {
     return next(error);
@@ -62,7 +66,17 @@ const applyLeave = async (req, res, next) => {
 
 const getLeaves = async (req, res, next) => {
   try {
-    const { role, status, studentId } = req.query;
+    const {
+      role,
+      status,
+      studentId,
+      leaveType,
+      startDate,
+      endDate,
+      page = 1,
+      limit = 20,
+    } = req.query;
+
     const leaveFilter = {};
 
     if (status) {
@@ -81,7 +95,29 @@ const getLeaves = async (req, res, next) => {
       leaveFilter.studentId = { $in: users.map((user) => user._id) };
     }
 
-    const leaves = await Leave.find(leaveFilter).sort({ createdAt: -1 });
+    if (leaveType) {
+      leaveFilter.leaveType = String(leaveType).toLowerCase();
+    }
+
+    if (startDate || endDate) {
+      leaveFilter.createdAt = {};
+      if (startDate) {
+        leaveFilter.createdAt.$gte = new Date(startDate);
+      }
+      if (endDate) {
+        leaveFilter.createdAt.$lte = new Date(endDate);
+      }
+    }
+
+    const pageNumber = Math.max(1, Number(page) || 1);
+    const pageSize = Math.max(1, Math.min(100, Number(limit) || 20));
+    const skip = (pageNumber - 1) * pageSize;
+
+    const leaves = await Leave.find(leaveFilter)
+      .sort({ createdAt: -1 })
+      .skip(skip)
+      .limit(pageSize);
+
     return res.status(200).json(leaves.map(formatLeaveResponse));
   } catch (error) {
     return next(error);
@@ -111,6 +147,8 @@ const updateLeaveStatus = async (req, res, next) => {
     if (!leave) {
       return res.status(404).json({ message: "Leave request not found." });
     }
+
+    console.log("Notification: Leave updated");
 
     return res.status(200).json(formatLeaveResponse(leave));
   } catch (error) {

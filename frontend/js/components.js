@@ -657,13 +657,28 @@ window.NotificationItem = NotificationItem;
 // SIDEBAR COMPONENT
 // ============================================================
 function Sidebar({ currentPage, onNavigate, student, unreadCount, onToggleDark, isDark, isOpen, onClose }) {
-  const navItems = [
-    { page: 'dashboard', icon: 'LayoutDashboard', label: 'Dashboard' },
-    { page: 'apply', icon: 'FilePlus2', label: 'Apply Leave' },
-    { page: 'history', icon: 'ClipboardList', label: 'Leave History' },
-    { page: 'notifications', icon: 'Bell', label: 'Notifications', badge: unreadCount },
-    { page: 'profile', icon: 'UserCircle', label: 'Profile & Settings' },
-  ];
+  const role = (student?.role || 'student').toLowerCase();
+  const navItems =
+    role === 'faculty'
+      ? [
+          { page: 'dashboard', icon: 'LayoutDashboard', label: 'Faculty Dashboard' },
+          { page: 'faculty-apply', icon: 'FilePlus2', label: 'Apply Leave' },
+          { page: 'notifications', icon: 'Bell', label: 'Notifications', badge: unreadCount },
+          { page: 'profile', icon: 'UserCircle', label: 'Profile' },
+        ]
+      : role === 'admin'
+        ? [
+            { page: 'dashboard', icon: 'LayoutDashboard', label: 'Admin Dashboard' },
+            { page: 'notifications', icon: 'Bell', label: 'Notifications', badge: unreadCount },
+            { page: 'profile', icon: 'UserCircle', label: 'Profile' },
+          ]
+        : [
+            { page: 'dashboard', icon: 'LayoutDashboard', label: 'Dashboard' },
+            { page: 'apply', icon: 'FilePlus2', label: 'Apply Leave' },
+            { page: 'history', icon: 'ClipboardList', label: 'Leave History' },
+            { page: 'notifications', icon: 'Bell', label: 'Notifications', badge: unreadCount },
+            { page: 'profile', icon: 'UserCircle', label: 'Profile & Settings' },
+          ];
 
   return React.createElement(React.Fragment, null,
     // Overlay for mobile
@@ -705,7 +720,7 @@ function Sidebar({ currentPage, onNavigate, student, unreadCount, onToggleDark, 
       // Student profile mini
       React.createElement('div', { className: 'px-5 py-3 border-b border-[#E2E8F0] flex-shrink-0' },
         React.createElement('p', { className: 'text-[14px] font-medium text-[#0F172A] truncate' }, student?.name || 'Student'),
-        React.createElement('p', { className: 'text-[12px] text-[#64748B] truncate' }, student?.registerNumber || 'REG#')
+        React.createElement('p', { className: 'text-[12px] text-[#64748B] truncate' }, (student?.role || 'student').toUpperCase())
       ),
 
       // Nav
@@ -757,6 +772,7 @@ function MobileHeader({ currentPage, onOpenMenu, student, unreadCount, onNavigat
   const pageNames = {
     dashboard: 'Dashboard',
     apply: 'Apply Leave',
+    'faculty-apply': 'Apply Leave',
     history: 'Leave History',
     notifications: 'Notifications',
     profile: 'Profile & Settings',
@@ -797,7 +813,14 @@ function MobileHeader({ currentPage, onOpenMenu, student, unreadCount, onNavigat
         role: 'button',
         'aria-label': 'Go to profile',
         tabIndex: 0,
-      }, student?.profileInitials || 'AM')
+      }, student?.profileInitials || 'AM'),
+      React.createElement('button', {
+        onClick: () => window.dispatchEvent(new CustomEvent('autoleave:logout')),
+        className: 'p-2 rounded-md hover:bg-red-50 text-red-600 smooth-transition',
+        'aria-label': 'Sign out',
+      },
+        React.createElement(Icon, { name: 'LogOut', size: 18 })
+      )
     )
   );
 }
@@ -806,14 +829,28 @@ window.MobileHeader = MobileHeader;
 // ============================================================
 // MOBILE BOTTOM NAV
 // ============================================================
-function MobileBottomNav({ currentPage, onNavigate, unreadCount }) {
-  const items = [
-    { page: 'dashboard', icon: 'LayoutDashboard', label: 'Home' },
-    { page: 'apply', icon: 'FilePlus2', label: 'Apply' },
-    { page: 'history', icon: 'ClipboardList', label: 'History' },
-    { page: 'notifications', icon: 'Bell', label: 'Alerts', badge: unreadCount },
-    { page: 'profile', icon: 'UserCircle', label: 'Profile' },
-  ];
+function MobileBottomNav({ currentPage, onNavigate, unreadCount, student }) {
+  const role = (student?.role || 'student').toLowerCase();
+  const items = role === 'faculty'
+    ? [
+        { page: 'dashboard', icon: 'LayoutDashboard', label: 'Home' },
+        { page: 'faculty-apply', icon: 'FilePlus2', label: 'Apply' },
+        { page: 'notifications', icon: 'Bell', label: 'Alerts', badge: unreadCount },
+        { page: 'profile', icon: 'UserCircle', label: 'Profile' },
+      ]
+    : role === 'admin'
+      ? [
+          { page: 'dashboard', icon: 'LayoutDashboard', label: 'Home' },
+          { page: 'notifications', icon: 'Bell', label: 'Alerts', badge: unreadCount },
+          { page: 'profile', icon: 'UserCircle', label: 'Profile' },
+        ]
+      : [
+          { page: 'dashboard', icon: 'LayoutDashboard', label: 'Home' },
+          { page: 'apply', icon: 'FilePlus2', label: 'Apply' },
+          { page: 'history', icon: 'ClipboardList', label: 'History' },
+          { page: 'notifications', icon: 'Bell', label: 'Alerts', badge: unreadCount },
+          { page: 'profile', icon: 'UserCircle', label: 'Profile' },
+        ];
 
   return React.createElement('nav', {
     className: 'lg:hidden fixed bottom-0 left-0 right-0 z-20 bg-white border-t border-[#E2E8F0] flex items-stretch safe-area-bottom',
@@ -852,6 +889,7 @@ function DesktopHeader({ currentPage, student, unreadCount, onNavigate, onToggle
   const pageNames = {
     dashboard: 'Dashboard',
     apply: 'Apply Leave',
+    'faculty-apply': 'Apply Leave',
     history: 'Leave History',
     notifications: 'Notifications',
     profile: 'Profile & Settings',
@@ -896,6 +934,14 @@ function DesktopHeader({ currentPage, student, unreadCount, onNavigate, onToggle
           React.createElement('p', { className: 'text-[13px] font-medium text-[#0F172A] leading-tight' }, student?.name || 'Arjun Mehta'),
           React.createElement('p', { className: 'text-[11px] text-[#64748B]' }, '3rd Year · CSE')
         )
+      ),
+      React.createElement('button', {
+        onClick: () => window.dispatchEvent(new CustomEvent('autoleave:logout')),
+        className: 'inline-flex items-center gap-1.5 px-3 py-1.5 text-[12px] font-medium text-red-600 border border-red-200 rounded-md hover:bg-red-50 smooth-transition',
+        'aria-label': 'Sign out',
+      },
+        React.createElement(Icon, { name: 'LogOut', size: 13 }),
+        'Sign Out'
       )
     )
   );
@@ -925,7 +971,7 @@ function AppLayout({ children, currentPage, onNavigate, student, unreadCount, on
       React.createElement('main', { className: 'flex-1 overflow-y-auto main-content', id: 'main-content', tabIndex: -1 },
         React.createElement('div', { className: 'app-shell content-wrap page-enter py-0' }, children)
       ),
-      React.createElement(MobileBottomNav, { currentPage, onNavigate, unreadCount })
+      React.createElement(MobileBottomNav, { currentPage, onNavigate, unreadCount, student })
     )
   );
 }
@@ -961,6 +1007,9 @@ function LeaveCard({ leave, onViewDetails }) {
         React.createElement(Icon, { name: 'Sparkles', size: 12, className: 'text-purple-400' }),
         React.createElement('span', { className: 'text-purple-600 dark:text-purple-400 font-medium' }, `${leave.aiPrediction}% AI`)
       )
+    ),
+    leave.facultyName && React.createElement('div', { className: 'mt-2 text-xs text-slate-500 dark:text-slate-400' },
+      `Sent to faculty: ${leave.facultyName}`
     ),
     leave.facultyRemark && React.createElement('div', { className: 'mt-3 px-2.5 py-1.5 bg-slate-50 dark:bg-slate-700/50 rounded-lg text-xs text-slate-500 dark:text-slate-400 flex items-start gap-1.5' },
       React.createElement(Icon, { name: 'MessageCircle', size: 12, className: 'mt-0.5 flex-shrink-0' }),

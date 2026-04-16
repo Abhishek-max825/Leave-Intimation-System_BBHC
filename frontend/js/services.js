@@ -1,25 +1,64 @@
 // ============================================================
-// AutoLeave AI – API Service Layer
-// ============================================================
-// Replace BASE_URL and mock implementations with real API calls.
+// AutoLeave AI – API Service Layer (REAL BACKEND INTEGRATION)
 // ============================================================
 
-const BASE_URL = '/api/v1'; // TODO: Replace with actual backend URL
+const DEFAULT_BASE_URL = 'http://localhost:5000';
 
-// Simulated network delay
-const delay = (ms = 800) => new Promise(res => setTimeout(res, ms));
+function getBaseUrl() {
+  return localStorage.getItem('autoleave_baseurl') || DEFAULT_BASE_URL;
+}
 
-// Generic fetch wrapper (ready for real API)
-async function apiFetch(endpoint, options = {}) {
-  // TODO: Replace with real fetch:
-  // const response = await fetch(`${BASE_URL}${endpoint}`, {
-  //   headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${getToken()}` },
-  //   ...options,
-  // });
-  // if (!response.ok) throw new Error(response.statusText);
-  // return response.json();
-  console.log(`[API] ${options.method || 'GET'} ${BASE_URL}${endpoint}`);
-  await delay(900 + Math.random() * 400);
+function setBaseUrl(url) {
+  localStorage.setItem('autoleave_baseurl', url);
+}
+
+window.setAutoLeaveBaseUrl = setBaseUrl;
+
+async function apiFetch(path, { method = 'GET', headers = {}, body } = {}) {
+  const baseUrl = getBaseUrl();
+  const url = `${baseUrl}${path}`;
+
+  const res = await fetch(url, {
+    method,
+    headers: {
+      'Content-Type': 'application/json',
+      ...headers,
+    },
+    body: body ? JSON.stringify(body) : undefined,
+  });
+
+  let data = null;
+  const text = await res.text();
+  try {
+    data = text ? JSON.parse(text) : null;
+  } catch {
+    data = null;
+  }
+
+  if (!res.ok) {
+    const msg = data?.message || `Request failed (${res.status})`;
+    throw new Error(msg);
+  }
+
+  return data;
+}
+
+function getSession() {
+  const stored = localStorage.getItem('autoleave_user');
+  return stored ? JSON.parse(stored) : null;
+}
+
+function buildRoleHeaders(overrides = {}) {
+  const session = getSession();
+  const role = overrides.role || session?.role;
+  const userId = overrides.userId || session?.userId;
+  const userName = overrides.userName || session?.name;
+
+  const h = {};
+  if (role) h['x-user-role'] = role;
+  if (userId) h['x-user-id'] = userId;
+  if (userName) h['x-user-name'] = userName;
+  return h;
 }
 
 // ============================================================
@@ -27,28 +66,28 @@ async function apiFetch(endpoint, options = {}) {
 // ============================================================
 window.AuthService = {
   /**
-   * Login with credentials
-   * @param {string} email
-   * @param {string} password
+   * Login (mock auth): by userId (optional for faculty/admin).
+   * If userId is provided, we fetch user details from backend and store session.
+   * If not provided, we store a role-only session.
    */
-  login: async (email, password) => {
-    await delay(1200);
-    // Simulate validation
-    if (!email || !password) throw new Error('Email and password are required.');
-    if (password.length < 4) throw new Error('Invalid credentials. Please try again.');
-    // TODO: Call real API: POST /auth/login { email, password }
-    return {
-      token: 'mock-jwt-token-xyz',
-      student: window.MOCK_DATA.student,
-    };
+  login: async ({ userId, role, password }) => {
+    const r = role ? String(role).toLowerCase() : null;
+
+    if (userId) {
+      const user = await apiFetch('/api/users/login', { method: 'POST', body: { userId, password } });
+      const session = { ...user, role: user.role || r, userId: user.userId };
+      localStorage.setItem('autoleave_user', JSON.stringify(session));
+      return session;
+    }
+
+    throw new Error('userId and password are required.');
   },
 
   /**
    * Logout
    */
   logout: async () => {
-    await delay(300);
-    // TODO: Call real API: POST /auth/logout
+    localStorage.removeItem('autoleave_user');
     return true;
   },
 
@@ -56,9 +95,23 @@ window.AuthService = {
    * Get current session
    */
   getSession: () => {
-    // TODO: Decode JWT token from localStorage
-    const stored = localStorage.getItem('autoleave_user');
-    return stored ? JSON.parse(stored) : null;
+    return getSession();
+  },
+
+  register: async ({ name, role, department, customDepartment, password }) => {
+    const created = await apiFetch('/api/users/register', {
+      method: 'POST',
+      body: { name, role, department, customDepartment, password },
+    });
+    return created;
+  },
+
+  getFacultyUsers: async () => {
+    return apiFetch('/api/users/faculty');
+  },
+
+  bootstrapFacultyUsers: async () => {
+    return apiFetch('/api/users/faculty/bootstrap', { method: 'POST' });
   },
 };
 
@@ -66,31 +119,16 @@ window.AuthService = {
 // Dashboard Service
 // ============================================================
 window.DashboardService = {
-  /**
-   * Get full dashboard data for a student
-   * @param {string} studentId
-   */
-  getStudentDashboard: async (studentId) => {
-    await delay(1000);
-    // TODO: GET /dashboard/:studentId
-    const leaves = window.MOCK_DATA.leaveRequests;
-    const approved = leaves.filter(l => l.status === 'approved').length;
-    const pending = leaves.filter(l => l.status === 'pending').length;
-    const rejected = leaves.filter(l => l.status === 'rejected').length;
+  getStudentDashboard: async () => {
+    return apiFetch('/api/student/dashboard', { headers: buildRoleHeaders({ role: 'student' }) });
+  },
 
-    return {
-      student: window.MOCK_DATA.student,
-      stats: {
-        total: leaves.length,
-        approved,
-        pending,
-        rejected,
-      },
-      latestLeave: leaves[1], // pending one as latest
-      notifications: window.MOCK_DATA.notifications.slice(0, 4),
-      attendance: window.MOCK_DATA.student.attendance,
-      attendanceHistory: window.MOCK_DATA.attendanceHistory,
-    };
+  getFacultyDashboard: async () => {
+    return apiFetch('/api/faculty/dashboard', { headers: buildRoleHeaders({ role: 'faculty' }) });
+  },
+
+  getAdminDashboard: async () => {
+    return apiFetch('/api/admin/dashboard', { headers: buildRoleHeaders({ role: 'admin' }) });
   },
 };
 
@@ -98,78 +136,61 @@ window.DashboardService = {
 // Leave Service
 // ============================================================
 window.LeaveService = {
-  /**
-   * Submit a new leave application
-   * @param {object} data - Leave form data
-   */
   submitLeaveApplication: async (data) => {
-    await delay(1500);
-    // Simulate occasional errors for demo
-    // TODO: POST /leaves { ...data }
-    if (!data.reason || data.reason.trim().length < 10) {
-      throw new Error('Please provide a more detailed reason (at least 10 characters).');
-    }
-    const newLeave = {
-      id: `LR-2024-00${Date.now().toString().slice(-3)}`,
-      ...data,
-      status: 'pending',
-      appliedDate: new Date().toISOString().split('T')[0],
-      submittedAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-      facultyRemark: null,
-      aiPrediction: Math.floor(55 + Math.random() * 35),
-      aiExplanation: 'Based on current attendance and leave history, approval chances are moderate.',
-    };
-    // Add to mock data
-    window.MOCK_DATA.leaveRequests.unshift(newLeave);
-    return newLeave;
+    // Backend student apply expects: attendance, leaveType, duration, reason
+    return apiFetch('/api/student/apply', {
+      method: 'POST',
+      headers: buildRoleHeaders({ role: 'student' }),
+      body: data,
+    });
   },
 
   /**
    * Get all leave requests with optional filters
    * @param {object} filters - { status, type, startDate, endDate, search }
    */
-  getLeaveHistory: async (filters = {}) => {
-    await delay(900);
-    // TODO: GET /leaves?status=&type=&startDate=&endDate=&search=
-    let leaves = [...window.MOCK_DATA.leaveRequests];
-
-    if (filters.status && filters.status !== 'all') {
-      leaves = leaves.filter(l => l.status === filters.status);
-    }
-    if (filters.type && filters.type !== 'all') {
-      leaves = leaves.filter(l => l.typeKey === filters.type);
-    }
-    if (filters.search) {
-      const q = filters.search.toLowerCase();
-      leaves = leaves.filter(l =>
-        l.reason.toLowerCase().includes(q) ||
-        l.type.toLowerCase().includes(q) ||
-        l.id.toLowerCase().includes(q)
-      );
-    }
-    if (filters.startDate) {
-      leaves = leaves.filter(l => l.startDate >= filters.startDate);
-    }
-    if (filters.endDate) {
-      leaves = leaves.filter(l => l.endDate <= filters.endDate);
-    }
-
-    return { leaves, total: leaves.length };
+  getStudentLeaves: async () => {
+    return apiFetch('/api/student/leaves', { headers: buildRoleHeaders({ role: 'student' }) });
   },
 
-  /**
-   * Cancel a leave request
-   * @param {string} leaveId
-   */
-  cancelLeave: async (leaveId) => {
-    await delay(700);
-    // TODO: DELETE /leaves/:id
-    const idx = window.MOCK_DATA.leaveRequests.findIndex(l => l.id === leaveId);
-    if (idx !== -1) {
-      window.MOCK_DATA.leaveRequests.splice(idx, 1);
-    }
-    return true;
+  getFacultyPending: async () => {
+    return apiFetch('/api/faculty/pending', { headers: buildRoleHeaders({ role: 'faculty' }) });
+  },
+
+  facultyApplyLeave: async (data) => {
+    return apiFetch('/api/faculty/apply', {
+      method: 'POST',
+      headers: buildRoleHeaders({ role: 'faculty' }),
+      body: data,
+    });
+  },
+
+  facultyDecision: async (leaveId, status, reason = '') => {
+    return apiFetch(`/api/faculty/leave/${leaveId}`, {
+      method: 'PUT',
+      headers: buildRoleHeaders({ role: 'faculty' }),
+      body: { status, reason },
+    });
+  },
+
+  getAdminUsers: async () => {
+    return apiFetch('/api/admin/users', { headers: buildRoleHeaders({ role: 'admin' }) });
+  },
+
+  getAdminLeaves: async () => {
+    return apiFetch('/api/admin/leaves', { headers: buildRoleHeaders({ role: 'admin' }) });
+  },
+
+  getAdminPending: async () => {
+    return apiFetch('/api/admin/pending', { headers: buildRoleHeaders({ role: 'admin' }) });
+  },
+
+  adminDecision: async (leaveId, status, reason = '') => {
+    return apiFetch(`/api/admin/leave/${leaveId}`, {
+      method: 'PUT',
+      headers: buildRoleHeaders({ role: 'admin' }),
+      body: { status, reason },
+    });
   },
 };
 
@@ -177,48 +198,30 @@ window.LeaveService = {
 // AI Prediction Service
 // ============================================================
 window.PredictionService = {
-  /**
-   * Get AI approval prediction for a leave application
-   * @param {object} data - { type, days, reason, startDate }
-   */
-  getPrediction: async (data) => {
-    await delay(600);
-    // TODO: POST /ai/predict { ...data }
-    // This would call a trained ML model endpoint
-    const student = window.MOCK_DATA.student;
-    let base = 70;
-
-    // Attendance factor
-    if (student.attendance >= 85) base += 10;
-    else if (student.attendance < 75) base -= 20;
-
-    // Leave type factor
-    if (data.type === 'emergency') base += 15;
-    else if (data.type === 'sick') base += 8;
-    else if (data.type === 'personal') base -= 5;
-
-    // Duration factor
-    if (data.days <= 2) base += 5;
-    else if (data.days > 5) base -= 10;
-
-    // Reason length factor (proxy for detail)
-    if (data.reason && data.reason.length > 50) base += 5;
-
-    const probability = Math.min(95, Math.max(25, base + Math.floor(Math.random() * 10 - 5)));
-
+  // Backend returns prediction during apply. Here we do a light client-side preview.
+  getPreview: async ({ attendance, leaveType, duration }) => {
+    const att = Number(attendance) || 0;
+    const dur = Number(duration) || 1;
+    const type = String(leaveType || '').toLowerCase();
+    let score = 0.3;
+    if (att > 90) score += 0.45;
+    else if (att > 80) score += 0.3;
+    else if (att > 70) score += 0.1;
+    else score -= 0.15;
+    if (type === 'medical') score += 0.2;
+    else if (type === 'emergency') score += 0.1;
+    else score -= 0.05;
+    if (dur >= 6) score -= 0.12;
+    else if (dur >= 4) score -= 0.06;
+    score = Math.max(0.02, Math.min(0.98, score));
+    const probability = Math.round(score * 100);
     return {
       probability,
-      confidence: probability > 70 ? 'high' : probability > 50 ? 'moderate' : 'low',
-      explanation: probability > 70
-        ? `Strong approval probability. Good attendance record (${student.attendance}%) and leave type support a positive outcome.`
-        : probability > 50
-        ? `Moderate approval chances. Consider providing additional documentation for better outcomes.`
-        : `Lower approval probability. Attendance may be a concern. Ensure you have valid supporting documents.`,
+      explanation: 'Preview based on attendance, leave type, and duration.',
       factors: [
-        { label: 'Attendance Record', impact: student.attendance >= 80 ? 'positive' : 'negative', value: `${student.attendance}%` },
-        { label: 'Leave Type', impact: data.type === 'emergency' || data.type === 'sick' ? 'positive' : 'neutral', value: data.type },
-        { label: 'Duration', impact: (data.days || 1) <= 3 ? 'positive' : 'neutral', value: `${data.days || 1} day(s)` },
-        { label: 'Prior History', impact: 'positive', value: '2 approvals' },
+        { label: 'Attendance', impact: att >= 80 ? 'positive' : 'negative', value: `${att}%` },
+        { label: 'Leave Type', impact: type === 'medical' ? 'positive' : type === 'emergency' ? 'positive' : 'neutral', value: type || '—' },
+        { label: 'Duration', impact: dur <= 2 ? 'positive' : dur >= 6 ? 'negative' : 'neutral', value: `${dur} day(s)` },
       ],
     };
   },
@@ -232,10 +235,20 @@ window.NotificationService = {
    * Get all notifications for a student
    * @param {string} studentId
    */
-  getNotifications: async (studentId) => {
-    await delay(600);
-    // TODO: GET /notifications?studentId=
-    return window.MOCK_DATA.notifications;
+  getNotifications: async () => {
+    try {
+      const notifications = await apiFetch('/api/notifications', {
+        headers: buildRoleHeaders(),
+      });
+      return Array.isArray(notifications) ? notifications : [];
+    } catch (error) {
+      const message = String(error?.message || '').toLowerCase();
+      // Fallback for older backend instances where notifications route is not yet available.
+      if (message.includes('route not found') || message.includes('(404)')) {
+        return [];
+      }
+      throw error;
+    }
   },
 
   /**
@@ -243,10 +256,10 @@ window.NotificationService = {
    * @param {string} notificationId
    */
   markAsRead: async (notificationId) => {
-    await delay(300);
-    // TODO: PATCH /notifications/:id { read: true }
-    const notif = window.MOCK_DATA.notifications.find(n => n.id === notificationId);
-    if (notif) notif.read = true;
+    await apiFetch(`/api/notifications/${notificationId}/read`, {
+      method: 'PATCH',
+      headers: buildRoleHeaders(),
+    });
     return true;
   },
 
@@ -254,18 +267,20 @@ window.NotificationService = {
    * Mark all notifications as read
    */
   markAllAsRead: async () => {
-    await delay(500);
-    // TODO: PATCH /notifications/mark-all-read
-    window.MOCK_DATA.notifications.forEach(n => n.read = true);
+    await apiFetch('/api/notifications/read-all', {
+      method: 'PATCH',
+      headers: buildRoleHeaders(),
+    });
     return true;
   },
 
   /**
    * Get unread count
    */
-  getUnreadCount: () => {
-    return window.MOCK_DATA.notifications.filter(n => !n.read).length;
+  getUnreadCount: async () => {
+    const notifications = await window.NotificationService.getNotifications();
+    return notifications.filter(n => !n.read).length;
   },
 };
 
-console.log('[AutoLeave AI] API Services loaded. Replace mock implementations with real API calls.');
+console.log('[AutoLeave AI] API Services loaded (backend-integrated). Base URL:', getBaseUrl());

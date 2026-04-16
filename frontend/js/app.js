@@ -31,12 +31,21 @@ function useDarkMode() {
 // UNREAD COUNT HOOK
 // ============================================================
 function useUnreadCount() {
-  const [count, setCount] = useState(() => window.NotificationService.getUnreadCount());
+  const [count, setCount] = useState(0);
 
   useEffect(() => {
-    const interval = setInterval(() => {
-      setCount(window.NotificationService.getUnreadCount());
-    }, 3000);
+    let active = true;
+    const syncUnreadCount = async () => {
+      try {
+        const current = await window.NotificationService.getUnreadCount();
+        if (active) setCount(Number(current) || 0);
+      } catch {
+        if (active) setCount(0);
+      }
+    };
+
+    syncUnreadCount();
+    const interval = setInterval(syncUnreadCount, 3000);
     return () => clearInterval(interval);
   }, []);
 
@@ -94,6 +103,8 @@ function App() {
         return React.createElement(DashboardPage, { key: pageKey, onNavigate: navigateTo });
       case 'apply':
         return React.createElement(ApplyLeavePage, { key: pageKey, onNavigate: navigateTo });
+      case 'faculty-apply':
+        return React.createElement(FacultyApplyLeavePage, { key: pageKey, onNavigate: navigateTo });
       case 'history':
         return React.createElement(LeaveHistoryPage, { key: pageKey, onNavigate: navigateTo });
       case 'notifications':

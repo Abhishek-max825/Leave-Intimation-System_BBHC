@@ -2,34 +2,61 @@
 // AutoLeave AI – All Page Components
 // ============================================================
 
-const { useState, useEffect, useCallback, useMemo } = React;
+const { useState, useEffect, useCallback, useMemo, useRef } = React;
+
+const DEFAULT_FACULTY_OPTIONS = ["Pranam", "Megha", "Harish Kanchan", "JayaSheela", "Wilma"];
 
 // ============================================================
 // LOGIN PAGE
 // ============================================================
 function LoginPage({ onLogin }) {
-  const [form, setForm] = useState({ email: '', password: '' });
+  const [form, setForm] = useState({
+    role: 'student',
+    userId: '',
+    password: '',
+    name: '',
+    department: 'Department of Computer Application',
+    customDepartment: '',
+    registerPassword: '',
+  });
+  const [facultyUsers, setFacultyUsers] = useState([]);
   const [errors, setErrors] = useState({});
   const [loading, setLoading] = useState(false);
-  const [showPass, setShowPass] = useState(false);
   const [apiError, setApiError] = useState('');
+  const [showRegister, setShowRegister] = useState(false);
+  const { addToast } = useToast();
 
   useEffect(() => {
-    // Focus email input after mount
+    // Focus first input after mount
     setTimeout(() => {
-      const el = document.getElementById('email');
+      const el = document.getElementById('userId');
       if (el) el.focus();
     }, 200);
   }, []);
 
+  useEffect(() => {
+    const loadFacultyUsers = async () => {
+      try {
+        let list = await window.AuthService.getFacultyUsers();
+        if (!list || list.length === 0) {
+          const seeded = await window.AuthService.bootstrapFacultyUsers();
+          list = seeded.users || [];
+        }
+        setFacultyUsers(list);
+      } catch (e) {
+        console.warn('Failed to load faculty users', e);
+      }
+    };
+    loadFacultyUsers();
+  }, []);
+
   const validate = () => {
     const e = {};
-    if (!form.email.trim()) e.email = 'Email or Register Number is required.';
-    else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.email) && !/^[A-Z0-9]{5,15}$/i.test(form.email.trim())) {
-      e.email = 'Enter a valid email or register number.';
+    if (!form.role) e.role = 'Role is required.';
+    if (!form.userId.trim()) {
+      e.userId = `${form.role.charAt(0).toUpperCase() + form.role.slice(1)} userId is required.`;
     }
     if (!form.password) e.password = 'Password is required.';
-    else if (form.password.length < 4) e.password = 'Password must be at least 4 characters.';
     return e;
   };
 
@@ -42,9 +69,13 @@ function LoginPage({ onLogin }) {
 
     setLoading(true);
     try {
-      const result = await window.AuthService.login(form.email, form.password);
-      localStorage.setItem('autoleave_user', JSON.stringify(result.student));
-      onLogin(result.student);
+      const session = await window.AuthService.login({
+        userId: form.userId.trim() || null,
+        role: form.role,
+        password: form.password,
+      });
+      onLogin(session);
+      addToast('Logged in successfully.', 'success');
     } catch (err) {
       setApiError(err.message || 'Login failed. Please try again.');
     } finally {
@@ -52,8 +83,32 @@ function LoginPage({ onLogin }) {
     }
   };
 
-  const demoLogin = () => {
-    setForm({ email: 'arjun.mehta@college.edu', password: 'demo1234' });
+  const registerUserByRole = async () => {
+    setApiError('');
+    const e = {};
+    if (!form.name.trim()) e.name = 'Name is required.';
+    if (!form.department.trim()) e.department = 'Department is required.';
+    if (form.department === 'other' && !form.customDepartment.trim()) e.customDepartment = 'Please specify department name.';
+    if (!form.registerPassword || form.registerPassword.length < 4) e.registerPassword = 'Password must be at least 4 characters.';
+    setErrors(e);
+    if (Object.keys(e).length) return;
+
+    setLoading(true);
+    try {
+      const created = await window.AuthService.register({
+        name: form.name.trim(),
+        role: form.role,
+        department: form.department,
+        customDepartment: form.customDepartment.trim(),
+        password: form.registerPassword,
+      });
+      setForm((p) => ({ ...p, userId: created.userId, password: p.registerPassword }));
+      addToast(`${form.role} account created. userId added for login.`, 'success', 6000);
+    } catch (err) {
+      setApiError(err.message || 'Registration failed.');
+    } finally {
+      setLoading(false);
+    }
   };
 
   return React.createElement('div', { className: 'min-h-screen bg-transparent flex' },
@@ -128,7 +183,7 @@ function LoginPage({ onLogin }) {
 
         React.createElement('div', { className: 'mb-7' },
           React.createElement('h2', { className: 'text-2xl font-bold text-slate-800 dark:text-slate-100 mb-1 tracking-tight' }, 'Welcome back'),
-          React.createElement('p', { className: 'text-slate-500 dark:text-slate-400 text-sm' }, 'Sign in to continue to your leave management workspace.')
+          React.createElement('p', { className: 'text-slate-500 dark:text-slate-400 text-sm' }, 'Select role and login to see your dashboard.')
         ),
 
         apiError && React.createElement('div', { className: 'mb-4' },
@@ -136,73 +191,124 @@ function LoginPage({ onLogin }) {
         ),
 
         React.createElement('form', { onSubmit: handleSubmit, className: 'space-y-4 pro-surface rounded-2xl p-5', noValidate: true },
-          React.createElement(InputField, {
-            label: 'Email / Register Number',
-            id: 'email',
-            type: 'text',
-            placeholder: 'arjun.mehta@college.edu',
-            value: form.email,
-            onChange: e => { setForm(p => ({ ...p, email: e.target.value })); setErrors(p => ({ ...p, email: '' })); },
-            error: errors.email,
+          React.createElement(SelectField, {
+            label: 'Role',
+            id: 'role',
+            value: form.role,
+            onChange: e => setForm(p => ({ ...p, role: e.target.value })),
+            error: errors.role,
             required: true,
-            autoComplete: 'username',
+          },
+            React.createElement('option', { value: 'student' }, 'Student'),
+            React.createElement('option', { value: 'faculty' }, 'Faculty'),
+            React.createElement('option', { value: 'admin' }, 'Admin')
+          ),
+
+          !showRegister && (
+            form.role === 'faculty'
+              ? React.createElement(SelectField, {
+                  label: 'Faculty Account',
+                  id: 'faculty-user',
+                  value: form.userId,
+                  onChange: e => { setForm(p => ({ ...p, userId: e.target.value })); setErrors(p => ({ ...p, userId: '' })); },
+                  error: errors.userId,
+                  required: true,
+                },
+                  React.createElement('option', { value: '' }, '— Select faculty account —'),
+                  facultyUsers.map((f) =>
+                    React.createElement('option', { key: f.userId, value: f.userId }, `${f.name} (${f.department})`)
+                  )
+                )
+              : React.createElement(InputField, {
+                  label: form.role === 'student' ? 'Student userId' : 'UserId',
+                  id: 'userId',
+                  type: 'text',
+                  placeholder: 'Paste Mongo userId here',
+                  value: form.userId,
+                  onChange: e => { setForm(p => ({ ...p, userId: e.target.value })); setErrors(p => ({ ...p, userId: '' })); },
+                  error: errors.userId,
+                })
+          ),
+
+          !showRegister && React.createElement(InputField, {
+            label: 'Password',
+            id: 'login-password',
+            type: 'password',
+            placeholder: 'Enter account password',
+            value: form.password,
+            onChange: e => { setForm(p => ({ ...p, password: e.target.value })); setErrors(p => ({ ...p, password: '' })); },
+            error: errors.password,
+            required: true,
           }),
 
-          React.createElement('div', { className: 'flex flex-col gap-1.5' },
-            React.createElement('label', { htmlFor: 'password', className: 'text-sm font-medium text-slate-700 dark:text-slate-300 flex items-center gap-1' },
-              'Password',
-              React.createElement('span', { className: 'text-red-500 text-xs' }, '*')
-            ),
-            React.createElement('div', { className: 'relative' },
-              React.createElement('input', {
-                id: 'password',
-                type: showPass ? 'text' : 'password',
-                placeholder: '••••••••',
-                value: form.password,
-                onChange: e => { setForm(p => ({ ...p, password: e.target.value })); setErrors(p => ({ ...p, password: '' })); },
-                autoComplete: 'current-password',
-                required: true,
-                'aria-invalid': !!errors.password,
-                className: cn(
-                  'w-full px-3.5 py-2.5 pr-10 text-sm rounded-xl border bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-100 placeholder-slate-400 smooth-transition focus:border-teal-400',
-                  errors.password ? 'border-red-400 bg-red-50 dark:bg-red-900/10' : 'border-slate-200 dark:border-slate-700 hover:border-slate-300'
-                ),
+          React.createElement('div', { className: 'border-t border-slate-200 pt-4' },
+            React.createElement('button', {
+              type: 'button',
+              className: 'w-full text-left text-sm text-teal-700 hover:text-teal-800 font-medium',
+              onClick: () => setShowRegister((prev) => !prev),
+            }, showRegister ? `Hide create ${form.role} account` : `Create new ${form.role} account`),
+
+            showRegister && React.createElement('div', { className: 'mt-3 space-y-3' },
+              React.createElement('p', { className: 'text-xs text-slate-500 mb-2' }, `New ${form.role}? Create account and login using generated userId.`),
+              React.createElement(InputField, {
+                label: 'Name',
+                id: 'name',
+                type: 'text',
+                placeholder: 'Abhishek',
+                value: form.name,
+                onChange: e => { setForm(p => ({ ...p, name: e.target.value })); setErrors(p => ({ ...p, name: '' })); },
+                error: errors.name,
               }),
-              React.createElement('button', {
-                type: 'button',
-                onClick: () => setShowPass(p => !p),
-                className: 'absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 smooth-transition',
-                'aria-label': showPass ? 'Hide password' : 'Show password',
+              React.createElement(SelectField, {
+                label: 'Department',
+                id: 'department-select',
+                value: form.department,
+                onChange: e => { setForm(p => ({ ...p, department: e.target.value })); setErrors(p => ({ ...p, department: '', customDepartment: '' })); },
+                error: errors.department,
+                required: true,
               },
-                React.createElement(Icon, { name: showPass ? 'EyeOff' : 'Eye', size: 16 })
-              )
-            ),
-            errors.password && React.createElement('p', { className: 'text-xs text-red-500 flex items-center gap-1', role: 'alert' },
-              React.createElement(Icon, { name: 'AlertCircle', size: 12 }),
-              errors.password
+                React.createElement('option', { value: 'Department of Computer Application' }, 'Department of Computer Application'),
+                React.createElement('option', { value: 'Department of Commerce' }, 'Department of Commerce'),
+                React.createElement('option', { value: 'other' }, 'Other')
+              ),
+              form.department === 'other' && React.createElement(InputField, {
+                label: 'Specify Department Name',
+                id: 'customDepartment',
+                type: 'text',
+                placeholder: 'Enter department name',
+                value: form.customDepartment,
+                onChange: e => { setForm(p => ({ ...p, customDepartment: e.target.value })); setErrors(p => ({ ...p, customDepartment: '' })); },
+                error: errors.customDepartment,
+                required: true,
+              }),
+              React.createElement(InputField, {
+                label: 'Create Password',
+                id: 'registerPassword',
+                type: 'password',
+                placeholder: 'At least 4 characters',
+                value: form.registerPassword,
+                onChange: e => { setForm(p => ({ ...p, registerPassword: e.target.value })); setErrors(p => ({ ...p, registerPassword: '' })); },
+                error: errors.registerPassword,
+                required: true,
+              }),
+              React.createElement(Button, {
+                type: 'button',
+                variant: 'secondary',
+                size: 'md',
+                loading,
+                className: 'w-full mt-2',
+                onClick: registerUserByRole,
+              }, `Create ${form.role} Account`)
             )
           ),
 
-          React.createElement('div', { className: 'flex justify-end' },
-            React.createElement('button', { type: 'button', className: 'text-xs text-teal-600 dark:text-teal-400 hover:underline' }, 'Forgot password?')
-          ),
-
-          React.createElement(Button, {
+          !showRegister && React.createElement(Button, {
             type: 'submit',
             variant: 'primary',
             size: 'lg',
             loading,
             className: 'w-full',
-          }, 'Sign In'),
-
-          React.createElement('button', {
-            type: 'button',
-            onClick: demoLogin,
-            className: 'w-full flex items-center justify-center gap-2 text-sm text-teal-600 dark:text-teal-400 hover:text-teal-700 dark:hover:text-teal-300 smooth-transition py-2',
-          },
-            React.createElement(Icon, { name: 'Zap', size: 14 }),
-            'Use demo credentials'
-          )
+          }, 'Continue')
         ),
 
         React.createElement('p', { className: 'mt-8 text-center text-xs text-slate-400 dark:text-slate-500' },
@@ -226,7 +332,13 @@ function DashboardPage({ onNavigate }) {
     setLoading(true);
     setError('');
     try {
-      const result = await window.DashboardService.getStudentDashboard('STU2024001');
+      const session = window.AuthService.getSession();
+      if (!session?.role) throw new Error('Missing session. Please login again.');
+
+      let result;
+      if (session.role === 'student') result = await window.DashboardService.getStudentDashboard();
+      else if (session.role === 'faculty') result = await window.DashboardService.getFacultyDashboard();
+      else result = await window.DashboardService.getAdminDashboard();
       setData(result);
     } catch (err) {
       setError(err.message || 'Failed to load dashboard.');
@@ -235,18 +347,28 @@ function DashboardPage({ onNavigate }) {
     }
   }, []);
 
-  useEffect(() => {
-    loadDashboard();
-    // Firebase real-time listener placeholder
-    const unsub = window.FirebaseFirestore.subscribeToLeaveRequests('STU2024001', (updates) => {
-      console.log('[Dashboard] Real-time update received:', updates.length, 'records');
-    });
-    return () => unsub();
-  }, [loadDashboard]);
+  useEffect(() => { loadDashboard(); }, [loadDashboard]);
 
   if (error) return React.createElement('div', { className: 'p-6' },
     React.createElement(ErrorState, { message: error, onRetry: loadDashboard })
   );
+
+  const session = window.AuthService.getSession();
+  const role = (session?.role || 'student').toLowerCase();
+
+  if (role === 'faculty') {
+    return React.createElement(FacultyDashboardPage, { loading, data, error, onReload: loadDashboard, onNavigate });
+  }
+
+  if (role === 'admin') {
+    return React.createElement(AdminDashboardPage, { loading, data, error, onReload: loadDashboard });
+  }
+
+  // Student dashboard (default)
+  const stats = data?.stats || { total: 0, pending: 0, approved: 0, rejected: 0 };
+  const recentLeaves = data?.recentLeaves || [];
+  const latest = recentLeaves[0] || null;
+  const attendance = latest?.attendance ?? 0;
 
   return React.createElement('div', { className: 'px-7 py-6 space-y-6' },
     // Welcome Banner
@@ -259,10 +381,10 @@ function DashboardPage({ onNavigate }) {
             )
           : React.createElement(React.Fragment, null,
               React.createElement('h2', { className: 'text-[18px] font-medium text-[#0F172A]' },
-                `Good morning, ${data?.student?.name?.split(' ')[0] || 'Student'}`
+                `Welcome, ${session?.name?.split(' ')[0] || 'Student'}`
               ),
               React.createElement('p', { className: 'text-[13px] text-[#64748B] mt-0.5' },
-                'B.Tech — CSE, 3rd Year · Sec-B · Adv. Dr. Priya Ramachandran'
+                `Role-based dashboard · Student`
               )
             )
       ),
@@ -285,7 +407,7 @@ function DashboardPage({ onNavigate }) {
         { key: 'pending', title: 'Pending', icon: 'Clock', iconColor: 'text-[#D97706]', subtitle: 'Awaiting decision' },
         { key: 'rejected', title: 'Rejected', icon: 'XCircle', iconColor: 'text-[#DC2626]', subtitle: 'Not sanctioned' },
       ].map(c =>
-        React.createElement(StatCard, { key: c.key, loading, title: c.title, value: loading ? '—' : (data?.stats?.[c.key] ?? 0), icon: c.icon, iconColor: c.iconColor, subtitle: c.subtitle })
+        React.createElement(StatCard, { key: c.key, loading, title: c.title, value: loading ? '—' : (stats?.[c.key] ?? 0), icon: c.icon, iconColor: c.iconColor, subtitle: c.subtitle })
       )
     ),
 
@@ -295,35 +417,35 @@ function DashboardPage({ onNavigate }) {
       // Left column - 2/3 width on large screens
       React.createElement('div', { className: 'lg:col-span-2 space-y-6' },
 
-        // Current Leave Status Card
+        // Latest Leave + AI
         React.createElement('div', null,
-          React.createElement('h3', { className: 'text-[10px] uppercase tracking-[0.1em] text-[#94A3B8] mb-2' }, 'Current Leave'),
+          React.createElement('h3', { className: 'text-[10px] uppercase tracking-[0.1em] text-[#94A3B8] mb-2' }, 'Latest Leave'),
           loading
             ? React.createElement(SkeletonCard)
-            : data?.latestLeave
+            : latest
               ? React.createElement(Card, { className: 'p-4 sm:p-5' },
                   React.createElement('div', { className: 'flex flex-col sm:flex-row sm:items-start gap-4' },
                     React.createElement('div', { className: 'flex-1' },
                       React.createElement('div', { className: 'flex items-start justify-between gap-2 mb-3' },
                         React.createElement('div', null,
-                          React.createElement('p', { className: 'text-[15px] font-semibold text-[#0F172A]' }, data.latestLeave.type),
+                          React.createElement('p', { className: 'text-[15px] font-semibold text-[#0F172A]' }, latest.leaveType),
                           React.createElement('p', { className: 'text-[13px] text-[#64748B] mt-1 flex items-center gap-1' },
                             React.createElement(Icon, { name: 'Calendar', size: 12 }),
-                            `${formatDate(data.latestLeave.startDate)} – ${formatDate(data.latestLeave.endDate)}`
+                            `${latest.duration} day(s) · Attendance ${latest.attendance}%`
                           )
                         ),
-                        React.createElement(StatusBadge, { status: data.latestLeave.status, size: 'lg' })
+                        React.createElement(StatusBadge, { status: latest.status, size: 'lg' })
                       ),
-                      React.createElement('p', { className: 'text-[13px] text-[#64748B] line-clamp-2 mb-3' }, data.latestLeave.reason),
+                      React.createElement('p', { className: 'text-[13px] text-[#64748B] line-clamp-2 mb-3' }, latest.reason || '—'),
                       React.createElement('div', { className: 'flex items-center gap-2 text-[12px] text-[#94A3B8] flex-wrap' },
-                        React.createElement('span', null, `Applied ${formatDate(data.latestLeave.appliedDate)}`),
+                        React.createElement('span', null, `Decision: ${latest.decision || '—'}`),
                         React.createElement('span', null, '·'),
-                        React.createElement('span', null, `${data.latestLeave.days} day${data.latestLeave.days > 1 ? 's' : ''}`),
+                        React.createElement('span', null, `Risk: ${latest.riskLevel || '—'}`),
                         React.createElement('span', null, '·'),
-                        React.createElement('span', null, data.latestLeave.id)
+                        React.createElement('span', null, `New Attendance: ${latest.newAttendance}%`)
                       ),
-                      data.latestLeave.facultyRemark && React.createElement('div', { className: 'mt-3 p-3 bg-[#F8FAFC] rounded-md border border-[#E2E8F0]' },
-                        React.createElement('p', { className: 'text-[12px] text-[#64748B] leading-relaxed' }, data.latestLeave.facultyRemark)
+                      latest.riskLevel === 'HIGH' && React.createElement('div', { className: 'mt-3' },
+                        React.createElement(AlertBanner, { type: 'warning', message: '⚠ Attendance may drop below 75%' })
                       )
                     )
                   ),
@@ -385,22 +507,22 @@ function DashboardPage({ onNavigate }) {
         // Attendance Widget
         React.createElement(AttendanceWidget, {
           loading,
-          percentage: data?.student?.attendance || 87,
-          totalDays: data?.student?.totalWorkingDays || 120,
-          presentDays: data?.student?.presentDays || 105,
+          percentage: attendance || 0,
+          totalDays: 100,
+          presentDays: Math.round((attendance || 0)),
         }),
 
         // AI Prediction Card
         React.createElement('div', null,
           React.createElement(AIPredictionCard, {
             loading,
-            probability: data?.latestLeave?.aiPrediction || 82,
-            explanation: data?.latestLeave?.aiExplanation || 'Based on your attendance history and leave patterns, your approval outlook is strong.',
+            probability: latest ? Math.round((latest.predictionScore || 0) * 100) : 0,
+            explanation: latest?.reason || 'Apply leave to see AI prediction.',
             factors: [
-              { label: 'Attendance', value: '87%', percent: 87 },
-              { label: 'Leave Type', value: 'Strong', percent: 74 },
-              { label: 'Duration', value: 'Moderate', percent: 58 },
-              { label: 'History', value: 'Good', percent: 76 },
+              { label: 'Attendance', value: `${latest?.attendance ?? 0}%`, percent: latest?.attendance ?? 0 },
+              { label: 'Leave Type', value: `${latest?.leaveType ?? '—'}`, percent: 70 },
+              { label: 'Duration', value: `${latest?.duration ?? 0}d`, percent: 60 },
+              { label: 'Risk', value: `${latest?.riskLevel ?? '—'}`, percent: latest?.riskLevel === 'HIGH' ? 30 : latest?.riskLevel === 'MEDIUM' ? 60 : 85 },
             ],
           })
         ),
@@ -432,10 +554,360 @@ function DashboardPage({ onNavigate }) {
 }
 
 // ============================================================
+// FACULTY DASHBOARD
+// ============================================================
+function FacultyDashboardPage({ loading, data, onNavigate }) {
+  const [pending, setPending] = useState([]);
+  const [pendingLoading, setPendingLoading] = useState(true);
+  const { addToast } = useToast();
+
+  const loadPending = useCallback(async (showLoader = true) => {
+    if (showLoader) setPendingLoading(true);
+    try {
+      const leaves = await window.LeaveService.getFacultyPending();
+      setPending(leaves);
+    } catch (e) {
+      if (showLoader) addToast(e.message || 'Failed to load pending leaves', 'error');
+    } finally {
+      if (showLoader) setPendingLoading(false);
+    }
+  }, []);
+
+  useEffect(() => { loadPending(true); }, [loadPending]);
+  useEffect(() => {
+    const interval = setInterval(() => {
+      loadPending(false);
+    }, 4000);
+    return () => clearInterval(interval);
+  }, [loadPending]);
+
+  const decide = async (id, status) => {
+    try {
+      const decisionReason = window.prompt('Optional reason for this decision (leave blank if not needed):', '') || '';
+      await window.LeaveService.facultyDecision(id, status, decisionReason);
+      addToast(`Leave ${status} successfully`, 'success');
+      loadPending();
+    } catch (e) {
+      addToast(e.message || 'Action failed', 'error');
+    }
+  };
+
+  return React.createElement('div', { className: 'p-6 space-y-5 page-enter' },
+    React.createElement('div', { className: 'flex items-center justify-between' },
+      React.createElement('div', null,
+        React.createElement('h2', { className: 'text-xl font-bold text-slate-800 dark:text-slate-100' }, 'Faculty Dashboard'),
+        React.createElement('p', { className: 'text-sm text-slate-500 dark:text-slate-400 mt-0.5' }, 'Review pending leaves with AI risk insights.')
+      ),
+      React.createElement('div', { className: 'flex gap-2' },
+        React.createElement(Button, { variant: 'secondary', onClick: loadPending }, React.createElement(Icon, { name: 'RefreshCw', size: 16 }), 'Refresh'),
+        React.createElement(Button, { variant: 'primary', onClick: () => onNavigate('faculty-apply') }, React.createElement(Icon, { name: 'FilePlus2', size: 16 }), 'Apply Leave')
+      )
+    ),
+
+    React.createElement('div', { className: 'grid grid-cols-1 sm:grid-cols-3 gap-4' },
+      React.createElement(StatCard, { loading, title: 'Pending', value: data?.stats?.pending ?? 0, icon: 'Clock', iconColor: 'text-amber-600', subtitle: 'Needs action' }),
+      React.createElement(StatCard, { loading, title: 'Approved', value: data?.stats?.approved ?? 0, icon: 'CheckCircle', iconColor: 'text-green-600', subtitle: 'Completed' }),
+      React.createElement(StatCard, { loading, title: 'Rejected', value: data?.stats?.rejected ?? 0, icon: 'XCircle', iconColor: 'text-red-600', subtitle: 'Completed' }),
+    ),
+
+    React.createElement(Card, { className: 'p-4' },
+      React.createElement('h3', { className: 'text-sm font-semibold text-slate-700 dark:text-slate-300 mb-3' }, 'Pending Leaves'),
+      pendingLoading
+        ? React.createElement(LoadingOverlay, { message: 'Loading pending leaves...' })
+        : pending.length === 0
+          ? React.createElement(EmptyState, { icon: 'ClipboardList', title: 'No pending leaves', message: 'All caught up.' })
+          : React.createElement('div', { className: 'space-y-3' },
+              pending.map(l =>
+                React.createElement(Card, { key: l.leaveId, className: 'p-4 border border-slate-100' },
+                  React.createElement('div', { className: 'flex flex-col md:flex-row md:items-center md:justify-between gap-3' },
+                    React.createElement('div', { className: 'min-w-0' },
+                      React.createElement('p', { className: 'font-semibold text-slate-800' }, `${l.leaveType} · ${l.duration} day(s)`),
+                      React.createElement('p', { className: 'text-xs text-slate-500 mt-1' }, `Attendance: ${l.attendance}% · New: ${l.newAttendance}% · Risk: ${l.riskLevel}`),
+                      l.riskLevel === 'HIGH' && React.createElement('p', { className: 'text-xs text-amber-700 mt-1' }, '⚠ Consider rejecting or reducing duration')
+                    ),
+                    React.createElement('div', { className: 'flex items-center gap-3' },
+                      React.createElement('div', { className: 'w-40' },
+                        React.createElement(AIPredictionCard, { compact: true, probability: Math.round((l.predictionScore || 0) * 100), explanation: l.decision || '' })
+                      ),
+                      React.createElement('div', { className: 'flex gap-2' },
+                        React.createElement(Button, { variant: 'success', onClick: () => decide(l.leaveId, 'approved') }, 'Approve'),
+                        React.createElement(Button, { variant: 'danger', onClick: () => decide(l.leaveId, 'rejected') }, 'Reject')
+                      )
+                    )
+                  )
+                )
+              )
+            )
+    )
+  );
+}
+
+function FacultyApplyLeavePage({ onNavigate }) {
+  const [applyLoading, setApplyLoading] = useState(false);
+  const [applyForm, setApplyForm] = useState({
+    attendance: 85,
+    leaveType: '',
+    duration: 1,
+    reason: '',
+  });
+  const [applyErrors, setApplyErrors] = useState({});
+  const { addToast } = useToast();
+
+  const validateApply = () => {
+    const e = {};
+    if (applyForm.attendance === undefined || applyForm.attendance === null || applyForm.attendance === '') e.attendance = 'Attendance is required.';
+    if (!applyForm.leaveType) e.leaveType = 'Leave type is required.';
+    if (!applyForm.duration || Number(applyForm.duration) < 1) e.duration = 'Duration must be at least 1 day.';
+    if (!applyForm.reason || applyForm.reason.trim().length < 10) e.reason = 'Reason should be at least 10 characters.';
+    return e;
+  };
+
+  const submitFacultyLeave = async (evt) => {
+    evt.preventDefault();
+    const e = validateApply();
+    setApplyErrors(e);
+    if (Object.keys(e).length > 0) return;
+
+    setApplyLoading(true);
+    try {
+      await window.LeaveService.facultyApplyLeave({
+        attendance: Number(applyForm.attendance),
+        leaveType: applyForm.leaveType,
+        duration: Number(applyForm.duration),
+        reason: applyForm.reason.trim(),
+      });
+      addToast('Faculty leave submitted to admin successfully.', 'success');
+      setApplyForm({ attendance: 85, leaveType: '', duration: 1, reason: '' });
+      setApplyErrors({});
+      setTimeout(() => onNavigate('dashboard'), 600);
+    } catch (err) {
+      addToast(err.message || 'Failed to submit faculty leave.', 'error');
+    } finally {
+      setApplyLoading(false);
+    }
+  };
+
+  return React.createElement('div', { className: 'p-6 space-y-5 page-enter' },
+    React.createElement('div', { className: 'flex items-center justify-between' },
+      React.createElement('div', null,
+        React.createElement('h2', { className: 'text-xl font-bold text-slate-800 dark:text-slate-100' }, 'Faculty Leave Application'),
+        React.createElement('p', { className: 'text-sm text-slate-500 dark:text-slate-400 mt-0.5' }, 'Submit your leave request to admin from this dedicated page.')
+      ),
+      React.createElement(Button, { variant: 'secondary', onClick: () => onNavigate('dashboard') }, React.createElement(Icon, { name: 'ChevronLeft', size: 16 }), 'Back to Dashboard')
+    ),
+    React.createElement(Card, { className: 'p-4' },
+      React.createElement('form', { className: 'grid grid-cols-1 md:grid-cols-2 gap-3', onSubmit: submitFacultyLeave },
+        React.createElement(InputField, {
+          label: 'Current Attendance (%)',
+          id: 'faculty-attendance',
+          type: 'number',
+          min: 0,
+          max: 100,
+          value: applyForm.attendance,
+          onChange: (e) => { setApplyForm((p) => ({ ...p, attendance: e.target.value })); setApplyErrors((p) => ({ ...p, attendance: '' })); },
+          error: applyErrors.attendance,
+          required: true,
+        }),
+        React.createElement(SelectField, {
+          label: 'Leave Type',
+          id: 'faculty-leave-type',
+          value: applyForm.leaveType,
+          onChange: (e) => { setApplyForm((p) => ({ ...p, leaveType: e.target.value })); setApplyErrors((p) => ({ ...p, leaveType: '' })); },
+          error: applyErrors.leaveType,
+          required: true,
+        },
+          React.createElement('option', { value: '' }, '— Select leave type —'),
+          ['medical', 'personal', 'emergency'].map((t) =>
+            React.createElement('option', { key: t, value: t }, t)
+          )
+        ),
+        React.createElement(InputField, {
+          label: 'Duration (days)',
+          id: 'faculty-duration',
+          type: 'number',
+          min: 1,
+          max: 7,
+          value: applyForm.duration,
+          onChange: (e) => { setApplyForm((p) => ({ ...p, duration: e.target.value })); setApplyErrors((p) => ({ ...p, duration: '' })); },
+          error: applyErrors.duration,
+          required: true,
+        }),
+        React.createElement('div', { className: 'flex items-end' },
+          React.createElement(Button, { type: 'submit', variant: 'primary', loading: applyLoading, className: 'w-full md:w-auto' }, 'Submit to Admin')
+        ),
+        React.createElement('div', { className: 'md:col-span-2' },
+          React.createElement(TextareaField, {
+            label: 'Reason',
+            id: 'faculty-reason',
+            rows: 3,
+            value: applyForm.reason,
+            onChange: (e) => { setApplyForm((p) => ({ ...p, reason: e.target.value })); setApplyErrors((p) => ({ ...p, reason: '' })); },
+            error: applyErrors.reason,
+            required: true,
+          })
+        )
+      )
+    )
+  );
+}
+
+// ============================================================
+// ADMIN DASHBOARD
+// ============================================================
+function AdminDashboardPage({ loading, data }) {
+  const [users, setUsers] = useState([]);
+  const [leaves, setLeaves] = useState([]);
+  const [pending, setPending] = useState([]);
+  const [tab, setTab] = useState('analytics');
+  const [busy, setBusy] = useState(false);
+  const { addToast } = useToast();
+
+  const loadAll = useCallback(async (showLoader = true) => {
+    if (showLoader) setBusy(true);
+    try {
+      const [u, l, p] = await Promise.all([
+        window.LeaveService.getAdminUsers(),
+        window.LeaveService.getAdminLeaves(),
+        window.LeaveService.getAdminPending(),
+      ]);
+      setUsers(u);
+      setLeaves(l);
+      setPending(p);
+    } catch (e) {
+      if (showLoader) addToast(e.message || 'Failed to load admin data', 'error');
+    } finally {
+      if (showLoader) setBusy(false);
+    }
+  }, []);
+
+  useEffect(() => { loadAll(true); }, [loadAll]);
+  useEffect(() => {
+    const interval = setInterval(() => {
+      loadAll(false);
+    }, 5000);
+    return () => clearInterval(interval);
+  }, [loadAll]);
+
+  const analytics = data?.analytics || { totalUsers: 0, totalLeaves: 0, approvalRate: 0 };
+  const handleAdminDecision = async (leaveId, status) => {
+    try {
+      const decisionReason = window.prompt('Optional reason for this decision (leave blank if not needed):', '') || '';
+      await window.LeaveService.adminDecision(leaveId, status, decisionReason);
+      addToast(`Leave ${status} successfully`, 'success');
+      loadAll();
+    } catch (e) {
+      addToast(e.message || 'Failed to update leave status', 'error');
+    }
+  };
+
+  return React.createElement('div', { className: 'p-6 space-y-5 page-enter' },
+    React.createElement('div', { className: 'flex items-center justify-between' },
+      React.createElement('div', null,
+        React.createElement('h2', { className: 'text-xl font-bold text-slate-800 dark:text-slate-100' }, 'Admin Dashboard'),
+        React.createElement('p', { className: 'text-sm text-slate-500 dark:text-slate-400 mt-0.5' }, 'Monitor users, leaves, and analytics.')
+      ),
+      React.createElement(Button, { variant: 'secondary', onClick: loadAll }, React.createElement(Icon, { name: 'RefreshCw', size: 16 }), 'Refresh')
+    ),
+
+    React.createElement('div', { className: 'grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4' },
+      React.createElement(StatCard, { loading, title: 'Total Users', value: analytics.totalUsers, icon: 'User', iconColor: 'text-blue-600', subtitle: 'All roles' }),
+      React.createElement(StatCard, { loading, title: 'Total Leaves', value: analytics.totalLeaves, icon: 'FileText', iconColor: 'text-purple-600', subtitle: 'All requests' }),
+      React.createElement(StatCard, { loading, title: 'Approval Rate', value: `${analytics.approvalRate}%`, icon: 'BarChart2', iconColor: 'text-green-600', subtitle: 'Approved / Total' }),
+      React.createElement(StatCard, { loading, title: 'Pending Faculty', value: analytics.pendingFacultyRequests ?? 0, icon: 'Clock', iconColor: 'text-amber-600', subtitle: 'Needs admin action' }),
+    ),
+
+    React.createElement('div', { className: 'flex gap-2' },
+      ['analytics', 'users', 'leaves', 'pending'].map(t =>
+        React.createElement('button', {
+          key: t,
+          onClick: () => setTab(t),
+          className: cn('px-3.5 py-1.5 rounded-lg text-sm font-medium smooth-transition capitalize',
+            tab === t ? 'bg-teal-600 text-white' : 'bg-white border border-slate-200 text-slate-600 hover:bg-slate-50'
+          ),
+        }, t)
+      )
+    ),
+
+    busy
+      ? React.createElement(LoadingOverlay, { message: 'Loading admin data...' })
+      : tab === 'users'
+        ? React.createElement(Card, { className: 'p-4' },
+            React.createElement('h3', { className: 'text-sm font-semibold mb-3' }, 'Users'),
+            users.length === 0
+              ? React.createElement(EmptyState, { icon: 'User', title: 'No users', message: 'No users found.' })
+              : React.createElement('div', { className: 'overflow-x-auto' },
+                  React.createElement('table', { className: 'w-full text-sm' },
+                    React.createElement('thead', null,
+                      React.createElement('tr', { className: 'text-left text-xs text-slate-500' },
+                        ['Name', 'Role', 'Department', 'UserId'].map(h => React.createElement('th', { key: h, className: 'py-2 pr-3' }, h))
+                      )
+                    ),
+                    React.createElement('tbody', { className: 'divide-y' },
+                      users.map(u =>
+                        React.createElement('tr', { key: u.userId },
+                          React.createElement('td', { className: 'py-2 pr-3 font-medium' }, u.name),
+                          React.createElement('td', { className: 'py-2 pr-3' }, u.role),
+                          React.createElement('td', { className: 'py-2 pr-3' }, u.department),
+                          React.createElement('td', { className: 'py-2 pr-3 font-mono text-xs text-slate-500' }, u.userId),
+                        )
+                      )
+                    )
+                  )
+                )
+          )
+        : tab === 'leaves'
+          ? React.createElement(Card, { className: 'p-4' },
+              React.createElement('h3', { className: 'text-sm font-semibold mb-3' }, 'Leaves'),
+              leaves.length === 0
+                ? React.createElement(EmptyState, { icon: 'FileText', title: 'No leaves', message: 'No leaves found.' })
+                : React.createElement('div', { className: 'space-y-3' },
+                    leaves.slice(0, 20).map(l =>
+                      React.createElement(Card, { key: l.leaveId, className: 'p-4 border border-slate-100' },
+                        React.createElement('div', { className: 'flex items-center justify-between gap-4' },
+                          React.createElement('div', null,
+                            React.createElement('p', { className: 'font-semibold' }, `${l.leaveType} · ${l.duration} day(s)`),
+                            React.createElement('p', { className: 'text-xs text-slate-500 mt-1' }, `Status: ${l.status} · Risk: ${l.riskLevel} · New Attendance: ${l.newAttendance}%`)
+                          ),
+                          React.createElement(AIPredictionCard, { compact: true, probability: Math.round((l.predictionScore || 0) * 100), explanation: l.decision })
+                        )
+                      )
+                    )
+                  )
+            )
+          : tab === 'pending'
+            ? React.createElement(Card, { className: 'p-4' },
+                React.createElement('h3', { className: 'text-sm font-semibold mb-3' }, 'Pending Faculty Leave Requests'),
+                pending.length === 0
+                  ? React.createElement(EmptyState, { icon: 'ClipboardList', title: 'No pending requests', message: 'No faculty leave requests are awaiting approval.' })
+                  : React.createElement('div', { className: 'space-y-3' },
+                      pending.map(l =>
+                        React.createElement(Card, { key: l.leaveId, className: 'p-4 border border-slate-100' },
+                          React.createElement('div', { className: 'flex flex-col md:flex-row md:items-center md:justify-between gap-3' },
+                            React.createElement('div', null,
+                              React.createElement('p', { className: 'font-semibold' }, `${l.leaveType} · ${l.duration} day(s)`),
+                              React.createElement('p', { className: 'text-xs text-slate-500 mt-1' }, `Faculty: ${l.facultyName || 'Unknown'} · Attendance: ${l.attendance}% · Risk: ${l.riskLevel}`)
+                            ),
+                            React.createElement('div', { className: 'flex items-center gap-2' },
+                              React.createElement(Button, { variant: 'success', onClick: () => handleAdminDecision(l.leaveId, 'approved') }, 'Approve'),
+                              React.createElement(Button, { variant: 'danger', onClick: () => handleAdminDecision(l.leaveId, 'rejected') }, 'Reject')
+                            )
+                          )
+                        )
+                      )
+                    )
+              )
+          : React.createElement(Card, { className: 'p-4' },
+              React.createElement('p', { className: 'text-sm text-slate-600' }, 'Use the tabs above to view users and leaves.')
+            )
+  );
+}
+
+// ============================================================
 // APPLY LEAVE PAGE
 // ============================================================
 function ApplyLeavePage({ onNavigate }) {
-  const [form, setForm] = useState({ type: '', startDate: '', endDate: '', reason: '', emergencyContact: '' });
+  const [form, setForm] = useState({ attendance: 85, leaveType: '', duration: 1, reason: '', facultyName: '' });
+  const [facultyOptions, setFacultyOptions] = useState(DEFAULT_FACULTY_OPTIONS);
   const [errors, setErrors] = useState({});
   const [loading, setLoading] = useState(false);
   const [prediction, setPrediction] = useState(null);
@@ -443,27 +915,35 @@ function ApplyLeavePage({ onNavigate }) {
   const [submitted, setSubmitted] = useState(false);
   const { addToast } = useToast();
 
-  const student = window.MOCK_DATA.student;
+  const session = window.AuthService.getSession();
 
-  const calcDays = () => {
-    if (!form.startDate || !form.endDate) return 0;
-    const s = new Date(form.startDate);
-    const e = new Date(form.endDate);
-    const diff = Math.ceil((e - s) / 86400000) + 1;
-    return Math.max(0, diff);
-  };
-
-  const days = calcDays();
+  useEffect(() => {
+    const loadFacultyOptions = async () => {
+      try {
+        const facultyUsers = await window.AuthService.getFacultyUsers();
+        if (Array.isArray(facultyUsers) && facultyUsers.length > 0) {
+          const names = facultyUsers
+            .map((f) => String(f.name || "").trim())
+            .filter(Boolean);
+          if (names.length > 0) {
+            setFacultyOptions(names);
+          }
+        }
+      } catch (e) {
+        // keep default options if backend is unavailable
+      }
+    };
+    loadFacultyOptions();
+  }, []);
 
   const updatePrediction = useCallback(async (updatedForm) => {
-    if (!updatedForm.type || !updatedForm.reason || updatedForm.reason.length < 10) return;
+    if (!updatedForm.leaveType || !updatedForm.reason || updatedForm.reason.length < 10) return;
     setPredLoading(true);
     try {
-      const result = await window.PredictionService.getPrediction({
-        type: updatedForm.type,
-        days: calcDays(),
-        reason: updatedForm.reason,
-        startDate: updatedForm.startDate,
+      const result = await window.PredictionService.getPreview({
+        attendance: updatedForm.attendance,
+        leaveType: updatedForm.leaveType,
+        duration: updatedForm.duration,
       });
       setPrediction(result);
     } catch {
@@ -474,18 +954,17 @@ function ApplyLeavePage({ onNavigate }) {
   }, []);
 
   useEffect(() => {
-    const timer = setTimeout(() => { if (form.type && form.reason.length >= 10) updatePrediction(form); }, 800);
+    const timer = setTimeout(() => { if (form.leaveType && form.reason.length >= 10) updatePrediction(form); }, 600);
     return () => clearTimeout(timer);
-  }, [form.type, form.reason]);
+  }, [form.leaveType, form.reason, form.attendance, form.duration]);
 
   const validate = () => {
     const e = {};
-    if (!form.type) e.type = 'Please select a leave type.';
-    if (!form.startDate) e.startDate = 'Start date is required.';
-    if (!form.endDate) e.endDate = 'End date is required.';
-    if (form.startDate && form.endDate && new Date(form.endDate) < new Date(form.startDate)) {
-      e.endDate = 'End date cannot be before start date.';
-    }
+    if (session?.role !== 'student') e.role = 'Only students can apply leave.';
+    if (form.attendance === undefined || form.attendance === null) e.attendance = 'Attendance is required.';
+    if (!form.leaveType) e.leaveType = 'Please select a leave type.';
+    if (!form.duration || Number(form.duration) < 1) e.duration = 'Duration must be at least 1.';
+    if (!form.facultyName) e.facultyName = 'Please choose the faculty to send this request to.';
     if (!form.reason.trim()) e.reason = 'Please provide a reason for leave.';
     else if (form.reason.trim().length < 20) e.reason = 'Please provide a more detailed reason (at least 20 characters).';
     return e;
@@ -499,12 +978,12 @@ function ApplyLeavePage({ onNavigate }) {
 
     setLoading(true);
     try {
-      const typeLabel = window.MOCK_DATA.leaveTypes.find(t => t.value === form.type)?.label || form.type;
       await window.LeaveService.submitLeaveApplication({
-        ...form,
-        type: typeLabel,
-        typeKey: form.type,
-        days,
+        attendance: Number(form.attendance),
+        leaveType: form.leaveType,
+        duration: Number(form.duration),
+        reason: form.reason,
+        facultyName: form.facultyName,
       });
       setSubmitted(true);
       addToast('Leave application submitted successfully! You\'ll be notified of updates.', 'success', 5000);
@@ -520,8 +999,6 @@ function ApplyLeavePage({ onNavigate }) {
     setForm(p => ({ ...p, [field]: value }));
     setErrors(p => ({ ...p, [field]: '' }));
   };
-
-  const today = new Date().toISOString().split('T')[0];
 
   if (submitted) {
     return React.createElement('div', { className: 'p-6 flex items-center justify-center min-h-96' },
@@ -548,23 +1025,6 @@ function ApplyLeavePage({ onNavigate }) {
       React.createElement('div', { className: 'lg:col-span-2' },
         React.createElement('form', { onSubmit: handleSubmit, noValidate: true, className: 'space-y-5' },
 
-          // Student Info
-          React.createElement(Card, { className: 'p-5' },
-            React.createElement('h3', { className: 'text-sm font-semibold text-slate-700 dark:text-slate-300 mb-4 flex items-center gap-2' },
-              React.createElement(Icon, { name: 'User', size: 16, className: 'text-teal-500' }),
-              'Student Information'
-            ),
-            React.createElement('div', { className: 'grid grid-cols-1 sm:grid-cols-2 gap-4' },
-              React.createElement(InputField, { label: 'Full Name', id: 'student-name', value: student.name, readOnly: true, className: 'opacity-80' }),
-              React.createElement(InputField, { label: 'Register Number', id: 'reg-num', value: student.registerNumber, readOnly: true, className: 'opacity-80' }),
-              React.createElement(InputField, { label: 'Department', id: 'dept', value: student.department, readOnly: true, className: 'opacity-80 sm:col-span-2' }),
-            ),
-            React.createElement('p', { className: 'text-xs text-slate-400 dark:text-slate-500 mt-2 flex items-center gap-1' },
-              React.createElement(Icon, { name: 'Lock', size: 11 }),
-              'Pre-filled from your profile. Contact admin to update.'
-            )
-          ),
-
           // Leave Details
           React.createElement(Card, { className: 'p-5' },
             React.createElement('h3', { className: 'text-sm font-semibold text-slate-700 dark:text-slate-300 mb-4 flex items-center gap-2' },
@@ -572,45 +1032,52 @@ function ApplyLeavePage({ onNavigate }) {
               'Leave Details'
             ),
             React.createElement('div', { className: 'space-y-4' },
+              React.createElement(InputField, {
+                label: 'Current Attendance (%)',
+                id: 'attendance',
+                type: 'number',
+                value: form.attendance,
+                min: 0,
+                max: 100,
+                onChange: e => handleChange('attendance', e.target.value),
+                error: errors.attendance,
+                required: true,
+              }),
               React.createElement(SelectField, {
                 label: 'Leave Type',
                 id: 'leave-type',
-                value: form.type,
-                onChange: e => handleChange('type', e.target.value),
-                error: errors.type,
+                value: form.leaveType,
+                onChange: e => handleChange('leaveType', e.target.value),
+                error: errors.leaveType,
                 required: true,
               },
                 React.createElement('option', { value: '' }, '— Select leave type —'),
-                window.MOCK_DATA.leaveTypes.map(t =>
-                  React.createElement('option', { key: t.value, value: t.value }, t.label)
+                ['medical', 'personal', 'emergency'].map(t =>
+                  React.createElement('option', { key: t, value: t }, t)
                 )
               ),
-              React.createElement('div', { className: 'grid grid-cols-1 sm:grid-cols-3 gap-4 items-start' },
-                React.createElement(InputField, {
-                  label: 'Start Date',
-                  id: 'start-date',
-                  type: 'date',
-                  value: form.startDate,
-                  min: today,
-                  onChange: e => handleChange('startDate', e.target.value),
-                  error: errors.startDate,
-                  required: true,
-                }),
-                React.createElement(InputField, {
-                  label: 'End Date',
-                  id: 'end-date',
-                  type: 'date',
-                  value: form.endDate,
-                  min: form.startDate || today,
-                  onChange: e => handleChange('endDate', e.target.value),
-                  error: errors.endDate,
-                  required: true,
-                }),
-                React.createElement('div', { className: 'flex flex-col gap-1.5' },
-                  React.createElement('label', { className: 'text-sm font-medium text-slate-700 dark:text-slate-300' }, 'Duration'),
-                  React.createElement('div', { className: cn('px-3.5 py-2.5 rounded-xl border text-sm font-semibold', days > 0 ? 'bg-teal-50 dark:bg-teal-900/20 border-teal-200 dark:border-teal-800 text-teal-700 dark:text-teal-400' : 'bg-slate-50 dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-400') },
-                    days > 0 ? `${days} day${days > 1 ? 's' : ''}` : '—'
-                  )
+              React.createElement(InputField, {
+                label: 'Duration (days)',
+                id: 'duration',
+                type: 'number',
+                value: form.duration,
+                min: 1,
+                max: 7,
+                onChange: e => handleChange('duration', e.target.value),
+                error: errors.duration,
+                required: true,
+              }),
+              React.createElement(SelectField, {
+                label: 'Send To Faculty',
+                id: 'faculty-name',
+                value: form.facultyName,
+                onChange: e => handleChange('facultyName', e.target.value),
+                error: errors.facultyName,
+                required: true,
+              },
+                React.createElement('option', { value: '' }, '— Select faculty —'),
+                facultyOptions.map(name =>
+                  React.createElement('option', { key: name, value: name }, name)
                 )
               ),
               React.createElement(TextareaField, {
@@ -624,35 +1091,6 @@ function ApplyLeavePage({ onNavigate }) {
                 required: true,
                 helperText: `${form.reason.length} characters${form.reason.length < 20 ? ' (min 20)' : ''}`,
               })
-            )
-          ),
-
-          // Optional fields
-          React.createElement(Card, { className: 'p-5' },
-            React.createElement('h3', { className: 'text-sm font-semibold text-slate-700 dark:text-slate-300 mb-4 flex items-center gap-2' },
-              React.createElement(Icon, { name: 'Upload', size: 16, className: 'text-teal-500' }),
-              'Additional Details (Optional)'
-            ),
-            React.createElement('div', { className: 'space-y-4' },
-              React.createElement(InputField, {
-                label: 'Emergency Contact',
-                id: 'emergency-contact',
-                type: 'tel',
-                placeholder: '+91 98765 43210',
-                value: form.emergencyContact,
-                onChange: e => handleChange('emergencyContact', e.target.value),
-                helperText: 'Reachable contact during your leave period.',
-              }),
-              React.createElement('div', { className: 'flex flex-col gap-1.5' },
-                React.createElement('label', { className: 'text-sm font-medium text-slate-700 dark:text-slate-300' }, 'Attachment'),
-                React.createElement('div', {
-                  className: 'border-2 border-dashed border-slate-200 dark:border-slate-700 rounded-xl p-4 text-center cursor-not-allowed opacity-60 hover:border-teal-300 smooth-transition',
-                },
-                  React.createElement(Icon, { name: 'Upload', size: 20, className: 'text-slate-400 mx-auto mb-1' }),
-                  React.createElement('p', { className: 'text-sm text-slate-500 dark:text-slate-400' }, 'Upload medical certificate or supporting document'),
-                  React.createElement('p', { className: 'text-xs text-slate-400 dark:text-slate-500 mt-0.5' }, 'PDF, JPG, PNG up to 5MB · (Backend required)')
-                )
-              )
             )
           ),
 
@@ -690,7 +1128,7 @@ function ApplyLeavePage({ onNavigate }) {
                   React.createElement(Card, { className: 'mt-3 p-4' },
                     React.createElement('p', { className: 'text-xs font-semibold text-slate-600 dark:text-slate-400 mb-2.5' }, 'Prediction Factors'),
                     React.createElement('div', { className: 'space-y-2' },
-                      prediction.factors.map((f, i) =>
+                      (prediction.factors || []).map((f, i) =>
                         React.createElement('div', { key: i, className: 'flex items-center justify-between text-xs' },
                           React.createElement('span', { className: 'text-slate-600 dark:text-slate-400' }, f.label),
                           React.createElement('span', { className: cn('font-medium flex items-center gap-1', f.impact === 'positive' ? 'text-green-600 dark:text-green-400' : f.impact === 'negative' ? 'text-red-500' : 'text-slate-500 dark:text-slate-400') },
@@ -714,7 +1152,11 @@ function ApplyLeavePage({ onNavigate }) {
               React.createElement('div', null,
                 React.createElement('p', { className: 'text-xs font-medium text-teal-700 dark:text-teal-300 mb-1' }, 'Before you submit'),
                 React.createElement('ul', { className: 'text-xs text-teal-600 dark:text-teal-400 space-y-1 list-disc list-inside' },
-                  ['Ensure all details are accurate.', 'Upload medical certificate if applicable.', 'You\'ll be notified via email & app.'].map(t =>
+                  [
+                    'Ensure all details are accurate.',
+                    `This request will be sent to: ${form.facultyName || 'selected faculty member'}.`,
+                    'You\'ll be notified via email & app.'
+                  ].map(t =>
                     React.createElement('li', { key: t }, t)
                   )
                 )
@@ -734,7 +1176,7 @@ function LeaveHistoryPage({ onNavigate }) {
   const [leaves, setLeaves] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
-  const [filters, setFilters] = useState({ status: 'all', type: 'all', search: '' });
+  const [filters, setFilters] = useState({ status: 'all', leaveType: 'all', search: '' });
   const [selectedLeave, setSelectedLeave] = useState(null);
   const [viewMode, setViewMode] = useState('cards');
   const { addToast } = useToast();
@@ -743,8 +1185,35 @@ function LeaveHistoryPage({ onNavigate }) {
     setLoading(true);
     setError('');
     try {
-      const result = await window.LeaveService.getLeaveHistory(filters);
-      setLeaves(result.leaves);
+      const session = window.AuthService.getSession();
+      if (session?.role !== 'student') {
+        setLeaves([]);
+        return;
+      }
+      const result = await window.LeaveService.getStudentLeaves();
+      // client-side filtering for demo
+      let items = [...result];
+      if (filters.status !== 'all') items = items.filter((l) => l.status === filters.status);
+      if (filters.leaveType !== 'all') items = items.filter((l) => l.leaveType === filters.leaveType);
+      if (filters.search) {
+        const q = filters.search.toLowerCase();
+        items = items.filter((l) => String(l.reason || '').toLowerCase().includes(q) || String(l.leaveType || '').toLowerCase().includes(q));
+      }
+      setLeaves(items.map((l) => ({
+        id: l.leaveId,
+        type: l.leaveType,
+        typeKey: l.leaveType,
+        facultyName: l.facultyName || '',
+        startDate: l.createdAt || new Date().toISOString(),
+        endDate: l.createdAt || new Date().toISOString(),
+        days: l.duration,
+        status: l.status,
+        reason: l.reason || '',
+        aiPrediction: Math.round((l.predictionScore || 0) * 100),
+        aiExplanation: l.reason || '',
+        facultyRemark: null,
+        appliedDate: l.createdAt || new Date().toISOString(),
+      })));
     } catch (err) {
       setError(err.message || 'Failed to load leave history.');
     } finally {
@@ -755,14 +1224,14 @@ function LeaveHistoryPage({ onNavigate }) {
   useEffect(() => { loadHistory(); }, [loadHistory]);
 
   const stats = useMemo(() => {
-    const all = window.MOCK_DATA.leaveRequests;
+    const all = leaves;
     return {
       total: all.length,
       approved: all.filter(l => l.status === 'approved').length,
       pending: all.filter(l => l.status === 'pending').length,
       rejected: all.filter(l => l.status === 'rejected').length,
     };
-  }, []);
+  }, [leaves]);
 
   return React.createElement('div', { className: 'p-4 sm:p-6 space-y-5 page-enter' },
     // Header
@@ -827,13 +1296,13 @@ function LeaveHistoryPage({ onNavigate }) {
         React.createElement('div', { className: 'relative' },
           React.createElement('select', {
             value: filters.type,
-            onChange: e => setFilters(p => ({ ...p, type: e.target.value })),
+            onChange: e => setFilters(p => ({ ...p, leaveType: e.target.value })),
             className: 'pl-3.5 pr-8 py-2.5 text-sm rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-100 smooth-transition focus:border-teal-400 cursor-pointer w-full sm:w-auto',
             'aria-label': 'Filter by type',
           },
             React.createElement('option', { value: 'all' }, 'All Types'),
-            window.MOCK_DATA.leaveTypes.map(t =>
-              React.createElement('option', { key: t.value, value: t.value }, t.label)
+            ['medical', 'personal', 'emergency'].map(t =>
+              React.createElement('option', { key: t, value: t }, t)
             )
           ),
           React.createElement('div', { className: 'absolute right-2.5 top-1/2 -translate-y-1/2 pointer-events-none' },
@@ -931,27 +1400,36 @@ function NotificationsPage() {
   const [error, setError] = useState('');
   const [filter, setFilter] = useState('all');
   const { addToast } = useToast();
+  const previousCountRef = useRef(0);
 
-  const loadNotifications = useCallback(async () => {
-    setLoading(true);
-    setError('');
+  const loadNotifications = useCallback(async (showLoader = true) => {
+    if (showLoader) {
+      setLoading(true);
+      setError('');
+    }
     try {
-      const result = await window.NotificationService.getNotifications('STU2024001');
+      const result = await window.NotificationService.getNotifications();
       setNotifications(result);
+      if (!showLoader && result.length > previousCountRef.current) {
+        addToast('New notification received', 'info', 2500);
+      }
+      previousCountRef.current = result.length;
     } catch (err) {
-      setError(err.message || 'Failed to load notifications.');
+      if (showLoader) setError(err.message || 'Failed to load notifications.');
     } finally {
-      setLoading(false);
+      if (showLoader) setLoading(false);
     }
   }, []);
 
   useEffect(() => {
-    loadNotifications();
-    // Firebase real-time placeholder
-    const unsub = window.FirebaseFirestore.subscribeToNotifications('STU2024001', (updates) => {
-      console.log('[Notifications] Real-time updates received');
-    });
-    return () => unsub();
+    loadNotifications(true);
+  }, [loadNotifications]);
+
+  useEffect(() => {
+    const interval = setInterval(() => {
+      loadNotifications(false);
+    }, 3000);
+    return () => clearInterval(interval);
   }, [loadNotifications]);
 
   const markAllRead = async () => {
@@ -1006,12 +1484,11 @@ function NotificationsPage() {
       )
     ),
 
-    // Firebase badge
     React.createElement('div', { className: 'mb-4 flex items-center gap-2 px-3 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl' },
-      React.createElement('div', { className: 'w-2 h-2 bg-amber-400 rounded-full animate-pulse flex-shrink-0' }),
+      React.createElement('div', { className: 'w-2 h-2 bg-green-500 rounded-full flex-shrink-0' }),
       React.createElement('p', { className: 'text-xs text-slate-500 dark:text-slate-400' },
-        React.createElement('span', { className: 'font-medium text-slate-600 dark:text-slate-300' }, 'Firebase Real-time: '),
-        'Placeholder active. Connect Firebase SDK for live push notifications.'
+        React.createElement('span', { className: 'font-medium text-slate-600 dark:text-slate-300' }, 'MongoDB Notifications: '),
+        'Notifications are loaded from backend APIs.'
       )
     ),
 
@@ -1176,23 +1653,23 @@ function ProfilePage({ onToggleDark, isDark }) {
       )
     ),
 
-    // Firebase Status
+    // Backend Status
     React.createElement(Card, { className: 'p-5 bg-blue-50 dark:bg-blue-900/10 border-blue-200 dark:border-blue-900' },
       React.createElement('h3', { className: 'text-sm font-semibold text-blue-700 dark:text-blue-400 mb-3 flex items-center gap-2' },
         React.createElement(Icon, { name: 'Zap', size: 16 }),
-        'Firebase Integration Status'
+        'Backend Integration Status'
       ),
       React.createElement('div', { className: 'grid grid-cols-1 sm:grid-cols-3 gap-3' },
         [
-          { label: 'Authentication', status: 'Placeholder', icon: 'Shield' },
-          { label: 'Firestore', status: 'Placeholder', icon: 'Database' },
-          { label: 'Cloud Messaging', status: 'Placeholder', icon: 'Bell' },
+          { label: 'Authentication', status: 'Connected', icon: 'Shield' },
+          { label: 'MongoDB', status: 'Connected', icon: 'Database' },
+          { label: 'Notifications API', status: 'Connected', icon: 'Bell' },
         ].map(s =>
           React.createElement('div', { key: s.label, className: 'flex items-center gap-2 p-2.5 bg-white dark:bg-slate-800 rounded-xl' },
             React.createElement(Icon, { name: s.icon, size: 16, className: 'text-blue-500 flex-shrink-0' }),
             React.createElement('div', null,
               React.createElement('p', { className: 'text-xs font-medium text-slate-700 dark:text-slate-300' }, s.label),
-              React.createElement('p', { className: 'text-[10px] text-amber-500' }, s.status)
+              React.createElement('p', { className: 'text-[10px] text-green-600' }, s.status)
             )
           )
         )

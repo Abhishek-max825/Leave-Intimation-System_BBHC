@@ -29,10 +29,32 @@ const leaveSchema = new mongoose.Schema(
       required: true,
       trim: true,
     },
+    decisionReason: {
+      type: String,
+      trim: true,
+      default: "",
+    },
+    facultyName: {
+      type: String,
+      trim: true,
+      default: "",
+    },
     status: {
       type: String,
       enum: ["pending", "approved", "rejected"],
       default: "pending",
+    },
+    applicantRole: {
+      type: String,
+      enum: ["student", "faculty", "admin"],
+      default: "student",
+      lowercase: true,
+    },
+    approverRole: {
+      type: String,
+      enum: ["faculty", "admin"],
+      default: "faculty",
+      lowercase: true,
     },
     predictionScore: {
       type: Number,
