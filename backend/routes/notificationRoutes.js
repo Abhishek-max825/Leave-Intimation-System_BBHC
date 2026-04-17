@@ -1,6 +1,6 @@
 const express = require("express");
 const { attachUserFromRequest, authorizeRoles } = require("../middleware/authMiddleware");
-const { getNotifications, markAsRead, markAllAsRead } = require("../controllers/notificationController");
+const { getNotifications, markAsRead, markAllAsRead, clearRecentNotifications } = require("../controllers/notificationController");
 
 const router = express.Router();
 
@@ -10,6 +10,7 @@ router.use(authorizeRoles("student", "faculty", "admin"));
 router.get("/", getNotifications);
 router.patch("/:id/read", markAsRead);
 router.patch("/read-all", markAllAsRead);
+router.delete("/clear-recent", clearRecentNotifications);
 
 module.exports = router;
 

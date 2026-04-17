@@ -76,9 +76,39 @@ const markAllAsRead = async (req, res, next) => {
   }
 };
 
+const clearRecentNotifications = async (req, res, next) => {
+  try {
+    const userId = req.user?.userId;
+    const role = req.user?.role;
+
+    if (!userId || !mongoose.Types.ObjectId.isValid(String(userId))) {
+      return res.status(400).json({ message: "Valid x-user-id is required." });
+    }
+    if (!role) {
+      return res.status(400).json({ message: "x-user-role is required." });
+    }
+
+    // Delete notifications older than 24 hours or all read notifications
+    const oneDayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
+    await Notification.deleteMany({
+      recipientUserId: userId,
+      recipientRole: role,
+      $or: [
+        { isRead: true },
+        { createdAt: { $lt: oneDayAgo } }
+      ]
+    });
+
+    return res.status(200).json({ message: "Recent notifications cleared." });
+  } catch (error) {
+    return next(error);
+  }
+};
+
 module.exports = {
   getNotifications,
   markAsRead,
   markAllAsRead,
+  clearRecentNotifications,
 };
 

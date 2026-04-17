@@ -309,6 +309,17 @@ window.NotificationService = {
     const notifications = await window.NotificationService.getNotifications();
     return notifications.filter(n => !n.read).length;
   },
+
+  /**
+   * Clear recent notifications
+   */
+  clearRecentNotifications: async () => {
+    await apiFetch('/api/notifications/clear-recent', {
+      method: 'DELETE',
+      headers: buildRoleHeaders(),
+    });
+    return true;
+  },
 };
 
 window.SystemService = {
