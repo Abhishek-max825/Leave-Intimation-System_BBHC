@@ -25,21 +25,42 @@ const shapeLeave = (leave) => {
 
 const adminDashboard = async (req, res, next) => {
   try {
-    const totalLeaves = await Leave.countDocuments({});
-    const approvedLeaves = await Leave.countDocuments({ status: "approved" });
+    const [
+      totalLeaves,
+      approvedLeaves,
+      pendingFacultyRequests,
+      totalUsers,
+      totalStudents,
+      totalFaculty,
+      totalAdmins,
+      studentLeaves,
+      facultyLeaves,
+    ] = await Promise.all([
+      Leave.countDocuments({}),
+      Leave.countDocuments({ status: "approved" }),
+      Leave.countDocuments({
+        status: "pending",
+        approverRole: "admin",
+        applicantRole: "faculty",
+      }),
+      User.countDocuments({}),
+      User.countDocuments({ role: "student" }),
+      User.countDocuments({ role: "faculty" }),
+      User.countDocuments({ role: "admin" }),
+      Leave.countDocuments({ applicantRole: "student" }),
+      Leave.countDocuments({ applicantRole: "faculty" }),
+    ]);
     const approvalRate = totalLeaves === 0 ? 0 : Number(((approvedLeaves / totalLeaves) * 100).toFixed(2));
-    const pendingFacultyRequests = await Leave.countDocuments({
-      status: "pending",
-      approverRole: "admin",
-      applicantRole: "faculty",
-    });
-
-    const totalUsers = await User.countDocuments({});
 
     return res.status(200).json({
       analytics: {
         totalUsers,
+        totalStudents,
+        totalFaculty,
+        totalAdmins,
         totalLeaves,
+        studentLeaves,
+        facultyLeaves,
         approvalRate,
         pendingFacultyRequests,
       },
@@ -55,6 +76,7 @@ const adminUsers = async (req, res, next) => {
     return res.status(200).json(
       users.map((u) => ({
         userId: u._id,
+        loginUserId: u.loginUserId || String(u._id),
         name: u.name,
         role: u.role,
         department: u.department,

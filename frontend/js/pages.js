@@ -15,11 +15,13 @@ function LoginPage({ onLogin }) {
     userId: '',
     password: '',
     name: '',
+    loginUserId: '',
     department: 'Department of Computer Application',
     customDepartment: '',
     registerPassword: '',
   });
   const [facultyUsers, setFacultyUsers] = useState([]);
+  const [defaultAdmin, setDefaultAdmin] = useState(null);
   const [errors, setErrors] = useState({});
   const [loading, setLoading] = useState(false);
   const [apiError, setApiError] = useState('');
@@ -50,11 +52,33 @@ function LoginPage({ onLogin }) {
     loadFacultyUsers();
   }, []);
 
+  useEffect(() => {
+    const loadDefaultAdmin = async () => {
+      try {
+        const admin = await window.AuthService.bootstrapAdminUser();
+        setDefaultAdmin(admin);
+      } catch (e) {
+        console.warn('Failed to bootstrap default admin', e);
+      }
+    };
+    loadDefaultAdmin();
+  }, []);
+
+  useEffect(() => {
+    if (form.role !== 'admin') return;
+    setShowRegister(false);
+    setForm((prev) => ({
+      ...prev,
+      userId: defaultAdmin?.loginUserId || '',
+      password: defaultAdmin?.defaultPassword || '',
+    }));
+  }, [form.role, defaultAdmin]);
+
   const validate = () => {
     const e = {};
     if (!form.role) e.role = 'Role is required.';
     if (!form.userId.trim()) {
-      e.userId = `${form.role.charAt(0).toUpperCase() + form.role.slice(1)} userId is required.`;
+      e.userId = `${form.role.charAt(0).toUpperCase() + form.role.slice(1)} login ID is required.`;
     }
     if (!form.password) e.password = 'Password is required.';
     return e;
@@ -69,10 +93,26 @@ function LoginPage({ onLogin }) {
 
     setLoading(true);
     try {
+      let loginUserId = form.userId.trim() || null;
+      let loginPassword = form.password;
+
+      // Keep admin login deterministic by fetching/syncing the default admin first.
+      if (form.role === 'admin') {
+        const admin = await window.AuthService.bootstrapAdminUser();
+        setDefaultAdmin(admin);
+        loginUserId = admin?.loginUserId || loginUserId;
+        loginPassword = admin?.defaultPassword || loginPassword;
+        setForm((prev) => ({
+          ...prev,
+          userId: loginUserId || '',
+          password: loginPassword || '',
+        }));
+      }
+
       const session = await window.AuthService.login({
-        userId: form.userId.trim() || null,
+        userId: loginUserId,
         role: form.role,
-        password: form.password,
+        password: loginPassword,
       });
       onLogin(session);
       addToast('Logged in successfully.', 'success');
@@ -87,6 +127,8 @@ function LoginPage({ onLogin }) {
     setApiError('');
     const e = {};
     if (!form.name.trim()) e.name = 'Name is required.';
+    if (!form.loginUserId.trim()) e.loginUserId = 'Custom userId is required.';
+    if (form.loginUserId.trim() && form.loginUserId.trim().length < 4) e.loginUserId = 'Custom userId must be at least 4 characters.';
     if (!form.department.trim()) e.department = 'Department is required.';
     if (form.department === 'other' && !form.customDepartment.trim()) e.customDepartment = 'Please specify department name.';
     if (!form.registerPassword || form.registerPassword.length < 4) e.registerPassword = 'Password must be at least 4 characters.';
@@ -100,10 +142,11 @@ function LoginPage({ onLogin }) {
         role: form.role,
         department: form.department,
         customDepartment: form.customDepartment.trim(),
+        loginUserId: form.loginUserId.trim(),
         password: form.registerPassword,
       });
-      setForm((p) => ({ ...p, userId: created.userId, password: p.registerPassword }));
-      addToast(`${form.role} account created. userId added for login.`, 'success', 6000);
+      setForm((p) => ({ ...p, userId: created.loginUserId || created.userId, password: p.registerPassword }));
+      addToast(`${form.role} account created. Custom userId added for login.`, 'success', 6000);
     } catch (err) {
       setApiError(err.message || 'Registration failed.');
     } finally {
@@ -220,13 +263,14 @@ function LoginPage({ onLogin }) {
                   )
                 )
               : React.createElement(InputField, {
-                  label: form.role === 'student' ? 'Student userId' : 'UserId',
+                  label: form.role === 'student' ? 'Student Login ID' : 'Login ID',
                   id: 'userId',
                   type: 'text',
-                  placeholder: 'Paste Mongo userId here',
+                  placeholder: form.role === 'admin' ? 'Default admin login ID auto-filled' : 'Enter custom login ID',
                   value: form.userId,
                   onChange: e => { setForm(p => ({ ...p, userId: e.target.value })); setErrors(p => ({ ...p, userId: '' })); },
                   error: errors.userId,
+                  readOnly: form.role === 'admin',
                 })
           ),
 
@@ -241,7 +285,7 @@ function LoginPage({ onLogin }) {
             required: true,
           }),
 
-          React.createElement('div', { className: 'border-t border-slate-200 pt-4' },
+          form.role !== 'admin' && React.createElement('div', { className: 'border-t border-slate-200 pt-4' },
             React.createElement('button', {
               type: 'button',
               className: 'w-full text-left text-sm text-teal-700 hover:text-teal-800 font-medium',
@@ -249,7 +293,7 @@ function LoginPage({ onLogin }) {
             }, showRegister ? `Hide create ${form.role} account` : `Create new ${form.role} account`),
 
             showRegister && React.createElement('div', { className: 'mt-3 space-y-3' },
-              React.createElement('p', { className: 'text-xs text-slate-500 mb-2' }, `New ${form.role}? Create account and login using generated userId.`),
+              React.createElement('p', { className: 'text-xs text-slate-500 mb-2' }, `New ${form.role}? Create account and login using your custom userId.`),
               React.createElement(InputField, {
                 label: 'Name',
                 id: 'name',
@@ -279,6 +323,16 @@ function LoginPage({ onLogin }) {
                 value: form.customDepartment,
                 onChange: e => { setForm(p => ({ ...p, customDepartment: e.target.value })); setErrors(p => ({ ...p, customDepartment: '' })); },
                 error: errors.customDepartment,
+                required: true,
+              }),
+              React.createElement(InputField, {
+                label: 'Custom UserId',
+                id: 'loginUserId',
+                type: 'text',
+                placeholder: 'e.g. bca_abhishek',
+                value: form.loginUserId,
+                onChange: e => { setForm(p => ({ ...p, loginUserId: e.target.value })); setErrors(p => ({ ...p, loginUserId: '' })); },
+                error: errors.loginUserId,
                 required: true,
               }),
               React.createElement(InputField, {
@@ -644,6 +698,8 @@ function FacultyDashboardPage({ loading, data, onNavigate }) {
 
 function FacultyApplyLeavePage({ onNavigate }) {
   const [applyLoading, setApplyLoading] = useState(false);
+  const [summaryLoading, setSummaryLoading] = useState(true);
+  const [leaveSummary, setLeaveSummary] = useState({ total: 0, pending: 0, approved: 0, rejected: 0 });
   const [applyForm, setApplyForm] = useState({
     attendance: 85,
     leaveType: '',
@@ -652,6 +708,27 @@ function FacultyApplyLeavePage({ onNavigate }) {
   });
   const [applyErrors, setApplyErrors] = useState({});
   const { addToast } = useToast();
+
+  const loadOwnLeaveSummary = useCallback(async () => {
+    setSummaryLoading(true);
+    try {
+      const summary = await window.LeaveService.getFacultyOwnLeaveSummary();
+      setLeaveSummary({
+        total: Number(summary?.total) || 0,
+        pending: Number(summary?.pending) || 0,
+        approved: Number(summary?.approved) || 0,
+        rejected: Number(summary?.rejected) || 0,
+      });
+    } catch {
+      // Keep default summary when backend is unavailable.
+    } finally {
+      setSummaryLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    loadOwnLeaveSummary();
+  }, [loadOwnLeaveSummary]);
 
   const validateApply = () => {
     const e = {};
@@ -677,6 +754,7 @@ function FacultyApplyLeavePage({ onNavigate }) {
         reason: applyForm.reason.trim(),
       });
       addToast('Faculty leave submitted to admin successfully.', 'success');
+      loadOwnLeaveSummary();
       setApplyForm({ attendance: 85, leaveType: '', duration: 1, reason: '' });
       setApplyErrors({});
       setTimeout(() => onNavigate('dashboard'), 600);
@@ -694,6 +772,12 @@ function FacultyApplyLeavePage({ onNavigate }) {
         React.createElement('p', { className: 'text-sm text-slate-500 dark:text-slate-400 mt-0.5' }, 'Submit your leave request to admin from this dedicated page.')
       ),
       React.createElement(Button, { variant: 'secondary', onClick: () => onNavigate('dashboard') }, React.createElement(Icon, { name: 'ChevronLeft', size: 16 }), 'Back to Dashboard')
+    ),
+    React.createElement('div', { className: 'grid grid-cols-2 md:grid-cols-4 gap-3' },
+      React.createElement(StatCard, { loading: summaryLoading, title: 'Leaves Taken', value: leaveSummary.total, icon: 'FileText', iconColor: 'text-blue-600', subtitle: 'All faculty requests' }),
+      React.createElement(StatCard, { loading: summaryLoading, title: 'Pending', value: leaveSummary.pending, icon: 'Clock', iconColor: 'text-amber-600', subtitle: 'Awaiting admin action' }),
+      React.createElement(StatCard, { loading: summaryLoading, title: 'Approved', value: leaveSummary.approved, icon: 'CheckCircle', iconColor: 'text-green-600', subtitle: 'Sanctioned by admin' }),
+      React.createElement(StatCard, { loading: summaryLoading, title: 'Rejected', value: leaveSummary.rejected, icon: 'XCircle', iconColor: 'text-red-600', subtitle: 'Declined by admin' }),
     ),
     React.createElement(Card, { className: 'p-4' },
       React.createElement('form', { className: 'grid grid-cols-1 md:grid-cols-2 gap-3', onSubmit: submitFacultyLeave },
@@ -754,12 +838,15 @@ function FacultyApplyLeavePage({ onNavigate }) {
 // ============================================================
 // ADMIN DASHBOARD
 // ============================================================
-function AdminDashboardPage({ loading, data }) {
+function AdminDashboardPage({ loading, data, initialTab = 'analytics' }) {
   const [users, setUsers] = useState([]);
   const [leaves, setLeaves] = useState([]);
   const [pending, setPending] = useState([]);
-  const [tab, setTab] = useState('analytics');
+  const [tab, setTab] = useState(initialTab);
   const [busy, setBusy] = useState(false);
+  const [reportFilters, setReportFilters] = useState({ role: 'student', name: '', userId: '' });
+  const [report, setReport] = useState(null);
+  const [reportError, setReportError] = useState('');
   const { addToast } = useToast();
 
   const loadAll = useCallback(async (showLoader = true) => {
@@ -788,7 +875,17 @@ function AdminDashboardPage({ loading, data }) {
     return () => clearInterval(interval);
   }, [loadAll]);
 
-  const analytics = data?.analytics || { totalUsers: 0, totalLeaves: 0, approvalRate: 0 };
+  const analytics = {
+    totalUsers: Number(data?.analytics?.totalUsers) || 0,
+    totalStudents: Number(data?.analytics?.totalStudents) || 0,
+    totalFaculty: Number(data?.analytics?.totalFaculty) || 0,
+    totalAdmins: Number(data?.analytics?.totalAdmins) || 0,
+    totalLeaves: Number(data?.analytics?.totalLeaves) || 0,
+    studentLeaves: Number(data?.analytics?.studentLeaves) || 0,
+    facultyLeaves: Number(data?.analytics?.facultyLeaves) || 0,
+    approvalRate: Number(data?.analytics?.approvalRate) || 0,
+    pendingFacultyRequests: Number(data?.analytics?.pendingFacultyRequests) || 0,
+  };
   const handleAdminDecision = async (leaveId, status) => {
     try {
       const decisionReason = window.prompt('Optional reason for this decision (leave blank if not needed):', '') || '';
@@ -800,6 +897,78 @@ function AdminDashboardPage({ loading, data }) {
     }
   };
 
+  const buildPersonReport = () => {
+    setReportError('');
+    const normalizedName = String(reportFilters.name || '').trim().toLowerCase();
+    const normalizedUserId = String(reportFilters.userId || '').trim().toLowerCase();
+    const roleFilter = String(reportFilters.role || 'all').toLowerCase();
+    const allowedRoles = roleFilter === 'all' ? ['student', 'faculty'] : [roleFilter];
+
+    if (!normalizedName && !normalizedUserId) {
+      setReport(null);
+      setReportError('Enter student/faculty name or userId to generate report.');
+      return;
+    }
+
+    let matches = users.filter((u) => allowedRoles.includes(String(u.role || '').toLowerCase()));
+    if (normalizedUserId) {
+      matches = matches.filter((u) => {
+        const internalId = String(u.userId || '').toLowerCase();
+        const customId = String(u.loginUserId || '').toLowerCase();
+        return internalId === normalizedUserId || customId === normalizedUserId;
+      });
+    }
+    if (normalizedName) {
+      matches = matches.filter((u) => String(u.name || '').toLowerCase().includes(normalizedName));
+    }
+
+    if (matches.length === 0) {
+      setReport(null);
+      setReportError('No matching student/faculty found for the entered details.');
+      return;
+    }
+    if (matches.length > 1 && !normalizedUserId) {
+      setReport(null);
+      setReportError('Multiple matches found. Please enter exact userId for a unique report.');
+      return;
+    }
+
+    const person = matches[0];
+    const personRole = String(person.role || '').toLowerCase();
+    const personLeaves = leaves
+      .filter((l) =>
+        String(l.studentId || '') === String(person.userId) &&
+        String(l.applicantRole || '').toLowerCase() === personRole
+      )
+      .sort((a, b) => new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime());
+
+    const total = personLeaves.length;
+    const approved = personLeaves.filter((l) => l.status === 'approved').length;
+    const pendingCount = personLeaves.filter((l) => l.status === 'pending').length;
+    const rejected = personLeaves.filter((l) => l.status === 'rejected').length;
+    const highRisk = personLeaves.filter((l) => String(l.riskLevel || '').toUpperCase() === 'HIGH').length;
+    const averageDuration = total === 0
+      ? 0
+      : Number((personLeaves.reduce((sum, l) => sum + (Number(l.duration) || 0), 0) / total).toFixed(2));
+    const averagePrediction = total === 0
+      ? 0
+      : Number((personLeaves.reduce((sum, l) => sum + (Number(l.predictionScore) || 0), 0) / total * 100).toFixed(2));
+    const approvalRateForPerson = total === 0 ? 0 : Number(((approved / total) * 100).toFixed(2));
+
+    setReport({
+      person,
+      total,
+      approved,
+      pending: pendingCount,
+      rejected,
+      highRisk,
+      averageDuration,
+      averagePrediction,
+      approvalRateForPerson,
+      recentLeaves: personLeaves.slice(0, 10),
+    });
+  };
+
   return React.createElement('div', { className: 'p-6 space-y-5 page-enter' },
     React.createElement('div', { className: 'flex items-center justify-between' },
       React.createElement('div', null,
@@ -809,9 +978,11 @@ function AdminDashboardPage({ loading, data }) {
       React.createElement(Button, { variant: 'secondary', onClick: loadAll }, React.createElement(Icon, { name: 'RefreshCw', size: 16 }), 'Refresh')
     ),
 
-    React.createElement('div', { className: 'grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4' },
-      React.createElement(StatCard, { loading, title: 'Total Users', value: analytics.totalUsers, icon: 'User', iconColor: 'text-blue-600', subtitle: 'All roles' }),
-      React.createElement(StatCard, { loading, title: 'Total Leaves', value: analytics.totalLeaves, icon: 'FileText', iconColor: 'text-purple-600', subtitle: 'All requests' }),
+    React.createElement('div', { className: 'grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4' },
+      React.createElement(StatCard, { loading, title: 'Students', value: analytics.totalStudents, icon: 'GraduationCap', iconColor: 'text-blue-600', subtitle: `of ${analytics.totalUsers} total users` }),
+      React.createElement(StatCard, { loading, title: 'Faculty', value: analytics.totalFaculty, icon: 'UserCheck', iconColor: 'text-indigo-600', subtitle: `Admins: ${analytics.totalAdmins}` }),
+      React.createElement(StatCard, { loading, title: 'Student Leaves', value: analytics.studentLeaves, icon: 'ClipboardList', iconColor: 'text-purple-600', subtitle: `Faculty leaves: ${analytics.facultyLeaves}` }),
+      React.createElement(StatCard, { loading, title: 'Total Leaves', value: analytics.totalLeaves, icon: 'FileText', iconColor: 'text-slate-700', subtitle: 'Student + Faculty requests' }),
       React.createElement(StatCard, { loading, title: 'Approval Rate', value: `${analytics.approvalRate}%`, icon: 'BarChart2', iconColor: 'text-green-600', subtitle: 'Approved / Total' }),
       React.createElement(StatCard, { loading, title: 'Pending Faculty', value: analytics.pendingFacultyRequests ?? 0, icon: 'Clock', iconColor: 'text-amber-600', subtitle: 'Needs admin action' }),
     ),
@@ -830,6 +1001,84 @@ function AdminDashboardPage({ loading, data }) {
 
     busy
       ? React.createElement(LoadingOverlay, { message: 'Loading admin data...' })
+      : tab === 'analytics'
+        ? React.createElement('div', { className: 'space-y-4' },
+            React.createElement(Card, { className: 'p-4' },
+              React.createElement('h3', { className: 'text-sm font-semibold mb-3' }, 'Person-wise Analysis'),
+              React.createElement('p', { className: 'text-xs text-slate-500 mb-3' }, 'Search by student/faculty name or exact userId to generate a detailed report.'),
+              React.createElement('div', { className: 'grid grid-cols-1 md:grid-cols-4 gap-3' },
+                React.createElement(SelectField, {
+                  label: 'Role',
+                  id: 'analysis-role',
+                  value: reportFilters.role,
+                  onChange: (e) => setReportFilters((p) => ({ ...p, role: e.target.value })),
+                },
+                  React.createElement('option', { value: 'student' }, 'Student only'),
+                  React.createElement('option', { value: 'faculty' }, 'Faculty only'),
+                ),
+                React.createElement(InputField, {
+                  label: 'Name',
+                  id: 'analysis-name',
+                  type: 'text',
+                  placeholder: 'Enter name',
+                  value: reportFilters.name,
+                  onChange: (e) => setReportFilters((p) => ({ ...p, name: e.target.value })),
+                }),
+                React.createElement(InputField, {
+                  label: 'UserId',
+                  id: 'analysis-userid',
+                  type: 'text',
+                  placeholder: 'Enter exact userId',
+                  value: reportFilters.userId,
+                  onChange: (e) => setReportFilters((p) => ({ ...p, userId: e.target.value })),
+                }),
+                React.createElement('div', { className: 'flex items-end' },
+                  React.createElement(Button, { variant: 'primary', onClick: buildPersonReport, className: 'w-full md:w-auto' },
+                    React.createElement(Icon, { name: 'Search', size: 16 }),
+                    'Generate Report'
+                  )
+                )
+              ),
+              reportError && React.createElement('p', { className: 'text-xs text-red-600 mt-2' }, reportError)
+            ),
+            report && React.createElement(React.Fragment, null,
+              React.createElement(Card, { className: 'p-4' },
+                React.createElement('div', { className: 'flex flex-col md:flex-row md:items-center md:justify-between gap-2' },
+                  React.createElement('div', null,
+                    React.createElement('h3', { className: 'text-sm font-semibold' }, `${report.person.name} (${report.person.role})`),
+                    React.createElement('p', { className: 'text-xs text-slate-500 mt-0.5' }, `Login ID: ${report.person.loginUserId || report.person.userId} · Department: ${report.person.department || 'N/A'}`)
+                  ),
+                  React.createElement('p', { className: 'text-xs text-slate-500' }, 'Detailed leave behavior summary')
+                )
+              ),
+              React.createElement('div', { className: 'grid grid-cols-2 md:grid-cols-3 gap-3' },
+                React.createElement(StatCard, { loading: false, title: 'Total Leaves', value: report.total, icon: 'FileText', iconColor: 'text-blue-600', subtitle: 'Overall requests' }),
+                React.createElement(StatCard, { loading: false, title: 'Approved', value: report.approved, icon: 'CheckCircle', iconColor: 'text-green-600', subtitle: `${report.approvalRateForPerson}% approval` }),
+                React.createElement(StatCard, { loading: false, title: 'Pending', value: report.pending, icon: 'Clock', iconColor: 'text-amber-600', subtitle: 'Awaiting decision' }),
+                React.createElement(StatCard, { loading: false, title: 'Rejected', value: report.rejected, icon: 'XCircle', iconColor: 'text-red-600', subtitle: 'Declined requests' }),
+                React.createElement(StatCard, { loading: false, title: 'Avg Duration', value: `${report.averageDuration}d`, icon: 'Calendar', iconColor: 'text-indigo-600', subtitle: 'Average leave length' }),
+                React.createElement(StatCard, { loading: false, title: 'Avg AI Score', value: `${report.averagePrediction}%`, icon: 'Sparkles', iconColor: 'text-purple-600', subtitle: `High-risk: ${report.highRisk}` }),
+              ),
+              React.createElement(Card, { className: 'p-4' },
+                React.createElement('h3', { className: 'text-sm font-semibold mb-3' }, 'Recent Leave Records (max 10)'),
+                report.recentLeaves.length === 0
+                  ? React.createElement(EmptyState, { icon: 'ClipboardList', title: 'No leave records', message: 'This person has not submitted leave requests yet.' })
+                  : React.createElement('div', { className: 'space-y-2' },
+                      report.recentLeaves.map((l) =>
+                        React.createElement(Card, { key: l.leaveId, className: 'p-3 border border-slate-100' },
+                          React.createElement('div', { className: 'flex items-center justify-between gap-3' },
+                            React.createElement('div', null,
+                              React.createElement('p', { className: 'text-sm font-medium' }, `${l.leaveType} · ${l.duration} day(s)`),
+                              React.createElement('p', { className: 'text-xs text-slate-500 mt-0.5' }, `Status: ${l.status} · Risk: ${l.riskLevel} · New Attendance: ${l.newAttendance}%`)
+                            ),
+                            React.createElement('span', { className: 'text-xs text-slate-400' }, `${Math.round((Number(l.predictionScore) || 0) * 100)}% AI`)
+                          )
+                        )
+                      )
+                    )
+              )
+            )
+          )
       : tab === 'users'
         ? React.createElement(Card, { className: 'p-4' },
             React.createElement('h3', { className: 'text-sm font-semibold mb-3' }, 'Users'),
@@ -839,7 +1088,7 @@ function AdminDashboardPage({ loading, data }) {
                   React.createElement('table', { className: 'w-full text-sm' },
                     React.createElement('thead', null,
                       React.createElement('tr', { className: 'text-left text-xs text-slate-500' },
-                        ['Name', 'Role', 'Department', 'UserId'].map(h => React.createElement('th', { key: h, className: 'py-2 pr-3' }, h))
+                        ['Name', 'Role', 'Department', 'Login ID'].map(h => React.createElement('th', { key: h, className: 'py-2 pr-3' }, h))
                       )
                     ),
                     React.createElement('tbody', { className: 'divide-y' },
@@ -848,7 +1097,7 @@ function AdminDashboardPage({ loading, data }) {
                           React.createElement('td', { className: 'py-2 pr-3 font-medium' }, u.name),
                           React.createElement('td', { className: 'py-2 pr-3' }, u.role),
                           React.createElement('td', { className: 'py-2 pr-3' }, u.department),
-                          React.createElement('td', { className: 'py-2 pr-3 font-mono text-xs text-slate-500' }, u.userId),
+                          React.createElement('td', { className: 'py-2 pr-3 font-mono text-xs text-slate-500' }, u.loginUserId || u.userId),
                         )
                       )
                     )
@@ -900,6 +1149,14 @@ function AdminDashboardPage({ loading, data }) {
               React.createElement('p', { className: 'text-sm text-slate-600' }, 'Use the tabs above to view users and leaves.')
             )
   );
+}
+
+function AdminApprovalPage() {
+  return React.createElement(AdminDashboardPage, {
+    loading: false,
+    data: { analytics: {} },
+    initialTab: 'pending',
+  });
 }
 
 // ============================================================
@@ -1394,7 +1651,7 @@ function LeaveHistoryPage({ onNavigate }) {
 // ============================================================
 // NOTIFICATIONS PAGE
 // ============================================================
-function NotificationsPage() {
+function NotificationsPage({ onNavigate }) {
   const [notifications, setNotifications] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -1450,6 +1707,8 @@ function NotificationsPage() {
   }, [notifications, filter]);
 
   const unreadCount = notifications.filter(n => !n.read).length;
+  const session = window.AuthService.getSession();
+  const isAdmin = String(session?.role || '').toLowerCase() === 'admin';
 
   return React.createElement('div', { className: 'p-4 sm:p-6 page-enter' },
     React.createElement('div', { className: 'flex items-center justify-between mb-5' },
@@ -1462,9 +1721,19 @@ function NotificationsPage() {
           unreadCount > 0 ? `${unreadCount} unread notification${unreadCount > 1 ? 's' : ''}` : 'All caught up!'
         )
       ),
-      unreadCount > 0 && React.createElement(Button, { variant: 'ghost', size: 'sm', onClick: markAllRead },
-        React.createElement(Icon, { name: 'CheckCheck', size: 14 }),
-        'Mark all read'
+      React.createElement('div', { className: 'flex items-center gap-2' },
+        isAdmin && React.createElement(Button, {
+          variant: 'secondary',
+          size: 'sm',
+          onClick: () => onNavigate && onNavigate('admin-approvals'),
+        },
+          React.createElement(Icon, { name: 'ClipboardCheck', size: 14 }),
+          'Go to Approvals'
+        ),
+        unreadCount > 0 && React.createElement(Button, { variant: 'ghost', size: 'sm', onClick: markAllRead },
+          React.createElement(Icon, { name: 'CheckCheck', size: 14 }),
+          'Mark all read'
+        )
       )
     ),
 
@@ -1524,14 +1793,111 @@ function NotificationsPage() {
 // PROFILE & SETTINGS PAGE
 // ============================================================
 function ProfilePage({ onToggleDark, isDark }) {
-  const student = window.MOCK_DATA.student;
+  const session = window.AuthService.getSession() || {};
+  const [profile, setProfile] = useState({
+    userId: session.userId || '',
+    loginUserId: session.loginUserId || session.userId || '',
+    name: session.name || 'User',
+    role: session.role || 'student',
+    department: session.department || 'N/A',
+    createdAt: null,
+  });
+  const [profileLoading, setProfileLoading] = useState(true);
+  const [stats, setStats] = useState({ total: 0, approved: 0, pending: 0, rejected: 0, approvalRate: 0 });
+  const [backendStatus, setBackendStatus] = useState('Checking...');
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
+  const [pref, setPref] = useState(() => {
+    const push = localStorage.getItem('autoleave_push_notif');
+    const email = localStorage.getItem('autoleave_email_notif');
+    return {
+      push: push !== 'false',
+      email: email !== 'false',
+    };
+  });
   const { addToast } = useToast();
+
+  useEffect(() => {
+    const loadProfile = async () => {
+      setProfileLoading(true);
+      try {
+        const me = await window.AuthService.getMyProfile();
+        setProfile((p) => ({
+          ...p,
+          userId: me.userId || p.userId,
+          loginUserId: me.loginUserId || me.userId || p.loginUserId,
+          name: me.name || p.name,
+          role: me.role || p.role,
+          department: me.department || p.department,
+          createdAt: me.createdAt || p.createdAt,
+        }));
+      } catch {
+        // Fall back to session if backend is temporarily unavailable.
+      } finally {
+        setProfileLoading(false);
+      }
+    };
+    loadProfile();
+  }, []);
+
+  useEffect(() => {
+    const loadRoleStats = async () => {
+      try {
+        const role = String(profile.role || '').toLowerCase();
+        if (role === 'student') {
+          const leaves = await window.LeaveService.getStudentLeaves();
+          const total = leaves.length;
+          const approved = leaves.filter((l) => l.status === 'approved').length;
+          const pending = leaves.filter((l) => l.status === 'pending').length;
+          const rejected = leaves.filter((l) => l.status === 'rejected').length;
+          const approvalRate = total === 0 ? 0 : Number(((approved / total) * 100).toFixed(2));
+          setStats({ total, approved, pending, rejected, approvalRate });
+          return;
+        }
+        if (role === 'faculty') {
+          const summary = await window.LeaveService.getFacultyOwnLeaveSummary();
+          const total = Number(summary?.total) || 0;
+          const approved = Number(summary?.approved) || 0;
+          const pending = Number(summary?.pending) || 0;
+          const rejected = Number(summary?.rejected) || 0;
+          const approvalRate = total === 0 ? 0 : Number(((approved / total) * 100).toFixed(2));
+          setStats({ total, approved, pending, rejected, approvalRate });
+          return;
+        }
+        const adminDashboard = await window.DashboardService.getAdminDashboard();
+        const approvalRate = Number(adminDashboard?.analytics?.approvalRate) || 0;
+        const pending = Number(adminDashboard?.analytics?.pendingFacultyRequests) || 0;
+        setStats({
+          total: Number(adminDashboard?.analytics?.totalLeaves) || 0,
+          approved: 0,
+          pending,
+          rejected: 0,
+          approvalRate,
+        });
+      } catch {
+        // Keep default zeros.
+      }
+    };
+    loadRoleStats();
+  }, [profile.role]);
+
+  useEffect(() => {
+    const checkBackend = async () => {
+      try {
+        const health = await window.SystemService.getHealth();
+        setBackendStatus(health?.status === 'OK' ? 'Connected' : 'Degraded');
+      } catch {
+        setBackendStatus('Disconnected');
+      }
+    };
+    checkBackend();
+  }, []);
 
   const handleSave = async () => {
     setSaving(true);
     await new Promise(r => setTimeout(r, 1000));
+    localStorage.setItem('autoleave_push_notif', String(pref.push));
+    localStorage.setItem('autoleave_email_notif', String(pref.email));
     setSaving(false);
     setSaved(true);
     addToast('Profile preferences saved successfully.', 'success');
@@ -1544,16 +1910,19 @@ function ProfilePage({ onToggleDark, isDark }) {
       React.createElement('div', { className: 'flex flex-col sm:flex-row sm:items-center gap-5' },
         React.createElement('div', { className: 'relative flex-shrink-0' },
           React.createElement('div', {
-            className: 'w-20 h-20 rounded-2xl flex items-center justify-center text-white text-3xl font-bold shadow-lg',
-            style: { background: student.profileColor }
-          }, student.profileInitials),
+            className: 'w-20 h-20 rounded-2xl flex items-center justify-center text-white text-3xl font-bold shadow-lg bg-blue-600',
+          }, String(profile.name || 'U').split(' ').map((s) => s[0]).join('').slice(0, 2).toUpperCase()),
           React.createElement('div', { className: 'absolute -bottom-1 -right-1 w-6 h-6 bg-green-500 rounded-full border-2 border-white dark:border-slate-800', 'aria-label': 'Online status' })
         ),
         React.createElement('div', { className: 'flex-1' },
-          React.createElement('h2', { className: 'text-xl font-bold text-slate-800 dark:text-slate-100' }, student.name),
-          React.createElement('p', { className: 'text-sm text-slate-500 dark:text-slate-400 mt-0.5' }, student.email),
+          React.createElement('h2', { className: 'text-xl font-bold text-slate-800 dark:text-slate-100' }, profileLoading ? 'Loading profile...' : profile.name),
+          React.createElement('p', { className: 'text-sm text-slate-500 dark:text-slate-400 mt-0.5' }, `${String(profile.role || '').toUpperCase()} · ${profile.department || 'N/A'}`),
           React.createElement('div', { className: 'flex flex-wrap gap-2 mt-2' },
-            [student.registerNumber, student.class, `Sem ${student.semester}`].map(tag =>
+            [
+              `Login ID: ${profile.loginUserId || profile.userId || 'N/A'}`,
+              `Joined: ${profile.createdAt ? formatDate(profile.createdAt) : 'N/A'}`,
+              `Approval Rate: ${stats.approvalRate}%`,
+            ].map(tag =>
               React.createElement('span', { key: tag, className: 'text-xs px-2 py-0.5 bg-teal-50 dark:bg-teal-900/20 text-teal-700 dark:text-teal-400 rounded-full border border-teal-200 dark:border-teal-800' }, tag)
             )
           )
@@ -1561,24 +1930,24 @@ function ProfilePage({ onToggleDark, isDark }) {
       )
     ),
 
-    // Student Details
+    // Dynamic Details
     React.createElement(Card, { className: 'p-5' },
       React.createElement('h3', { className: 'text-sm font-semibold text-slate-700 dark:text-slate-300 mb-4 flex items-center gap-2' },
         React.createElement(Icon, { name: 'User', size: 16, className: 'text-teal-500' }),
-        'Academic Details'
+        'Dynamic User Details'
       ),
       React.createElement('div', { className: 'grid grid-cols-1 sm:grid-cols-2 gap-4' },
         [
-          ['Student ID', student.id],
-          ['Register No.', student.registerNumber],
-          ['Roll Number', student.rollNumber],
-          ['Department', student.department],
-          ['Class', student.class],
-          ['Phone', student.phone],
-          ['Faculty Adviser', student.adviser],
-          ['Adviser Email', student.adviserEmail],
-          ['Joined', formatDate(student.joinedDate)],
-          ['Attendance', `${student.attendance}%`],
+          ['Login ID', profile.loginUserId || profile.userId || 'N/A'],
+          ['Role', String(profile.role || 'N/A').toUpperCase()],
+          ['Department', profile.department || 'N/A'],
+          ['Joined', profile.createdAt ? formatDate(profile.createdAt) : 'N/A'],
+          ['Total Leaves', stats.total],
+          ['Approved', stats.approved],
+          ['Pending', stats.pending],
+          ['Rejected', stats.rejected],
+          ['Approval Rate', `${stats.approvalRate}%`],
+          ['Backend Status', backendStatus],
         ].map(([k, v]) =>
           React.createElement('div', { key: k, className: 'bg-slate-50 dark:bg-slate-700/50 rounded-xl p-3' },
             React.createElement('p', { className: 'text-xs text-slate-400 dark:text-slate-500 mb-0.5' }, k),
@@ -1615,12 +1984,13 @@ function ProfilePage({ onToggleDark, isDark }) {
             label: 'Push Notifications',
             desc: 'Get notified on leave status changes',
             control: React.createElement('button', {
-              className: 'relative w-12 h-6 rounded-full smooth-transition flex-shrink-0 bg-teal-500',
+              onClick: () => setPref((p) => ({ ...p, push: !p.push })),
+              className: cn('relative w-12 h-6 rounded-full smooth-transition flex-shrink-0', pref.push ? 'bg-teal-500' : 'bg-slate-300 dark:bg-slate-600'),
               role: 'switch',
-              'aria-checked': true,
+              'aria-checked': pref.push,
               'aria-label': 'Toggle push notifications',
             },
-              React.createElement('span', { className: 'absolute top-0.5 left-6 w-5 h-5 bg-white rounded-full shadow smooth-transition' })
+              React.createElement('span', { className: cn('absolute top-0.5 w-5 h-5 bg-white rounded-full shadow smooth-transition', pref.push ? 'left-6' : 'left-0.5') })
             )
           },
           {
@@ -1628,12 +1998,13 @@ function ProfilePage({ onToggleDark, isDark }) {
             label: 'Email Notifications',
             desc: 'Receive leave updates via email',
             control: React.createElement('button', {
-              className: 'relative w-12 h-6 rounded-full smooth-transition flex-shrink-0 bg-teal-500',
+              onClick: () => setPref((p) => ({ ...p, email: !p.email })),
+              className: cn('relative w-12 h-6 rounded-full smooth-transition flex-shrink-0', pref.email ? 'bg-teal-500' : 'bg-slate-300 dark:bg-slate-600'),
               role: 'switch',
-              'aria-checked': true,
+              'aria-checked': pref.email,
               'aria-label': 'Toggle email notifications',
             },
-              React.createElement('span', { className: 'absolute top-0.5 left-6 w-5 h-5 bg-white rounded-full shadow smooth-transition' })
+              React.createElement('span', { className: cn('absolute top-0.5 w-5 h-5 bg-white rounded-full shadow smooth-transition', pref.email ? 'left-6' : 'left-0.5') })
             )
           },
         ].map(setting =>
@@ -1661,15 +2032,15 @@ function ProfilePage({ onToggleDark, isDark }) {
       ),
       React.createElement('div', { className: 'grid grid-cols-1 sm:grid-cols-3 gap-3' },
         [
-          { label: 'Authentication', status: 'Connected', icon: 'Shield' },
-          { label: 'MongoDB', status: 'Connected', icon: 'Database' },
-          { label: 'Notifications API', status: 'Connected', icon: 'Bell' },
+          { label: 'Authentication', status: profile.userId ? 'Connected' : 'Disconnected', icon: 'Shield' },
+          { label: 'MongoDB', status: backendStatus, icon: 'Database' },
+          { label: 'Notifications API', status: backendStatus === 'Connected' ? 'Connected' : 'Unavailable', icon: 'Bell' },
         ].map(s =>
           React.createElement('div', { key: s.label, className: 'flex items-center gap-2 p-2.5 bg-white dark:bg-slate-800 rounded-xl' },
             React.createElement(Icon, { name: s.icon, size: 16, className: 'text-blue-500 flex-shrink-0' }),
             React.createElement('div', null,
               React.createElement('p', { className: 'text-xs font-medium text-slate-700 dark:text-slate-300' }, s.label),
-              React.createElement('p', { className: 'text-[10px] text-green-600' }, s.status)
+              React.createElement('p', { className: cn('text-[10px]', s.status === 'Connected' ? 'text-green-600' : s.status === 'Checking...' ? 'text-amber-600' : 'text-red-600') }, s.status)
             )
           )
         )

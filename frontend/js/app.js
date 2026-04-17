@@ -101,6 +101,8 @@ function App() {
     switch (page) {
       case 'dashboard':
         return React.createElement(DashboardPage, { key: pageKey, onNavigate: navigateTo });
+      case 'admin-approvals':
+        return React.createElement(AdminApprovalPage, { key: pageKey });
       case 'apply':
         return React.createElement(ApplyLeavePage, { key: pageKey, onNavigate: navigateTo });
       case 'faculty-apply':
@@ -108,7 +110,7 @@ function App() {
       case 'history':
         return React.createElement(LeaveHistoryPage, { key: pageKey, onNavigate: navigateTo });
       case 'notifications':
-        return React.createElement(NotificationsPage, { key: pageKey });
+        return React.createElement(NotificationsPage, { key: pageKey, onNavigate: navigateTo });
       case 'profile':
         return React.createElement(ProfilePage, { key: pageKey, onToggleDark: toggleDark, isDark });
       default:

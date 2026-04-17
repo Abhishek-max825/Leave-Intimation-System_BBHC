@@ -3,6 +3,7 @@ const { attachUserFromRequest, authorizeRoles } = require("../middleware/authMid
 const {
   facultyDashboard,
   facultyPending,
+  facultyOwnLeaveSummary,
   facultyApplyLeave,
   facultyUpdateLeave,
 } = require("../controllers/facultyController");
@@ -14,6 +15,7 @@ router.use(authorizeRoles("faculty"));
 
 router.get("/dashboard", facultyDashboard);
 router.get("/pending", facultyPending);
+router.get("/my-leaves/summary", facultyOwnLeaveSummary);
 router.post("/apply", facultyApplyLeave);
 router.put("/leave/:id", facultyUpdateLeave);
 

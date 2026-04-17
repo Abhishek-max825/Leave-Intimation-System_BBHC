@@ -98,10 +98,10 @@ window.AuthService = {
     return getSession();
   },
 
-  register: async ({ name, role, department, customDepartment, password }) => {
+  register: async ({ name, role, department, customDepartment, loginUserId, password }) => {
     const created = await apiFetch('/api/users/register', {
       method: 'POST',
-      body: { name, role, department, customDepartment, password },
+      body: { name, role, department, customDepartment, loginUserId, password },
     });
     return created;
   },
@@ -110,8 +110,16 @@ window.AuthService = {
     return apiFetch('/api/users/faculty');
   },
 
+  getMyProfile: async () => {
+    return apiFetch('/api/users/me', { headers: buildRoleHeaders() });
+  },
+
   bootstrapFacultyUsers: async () => {
     return apiFetch('/api/users/faculty/bootstrap', { method: 'POST' });
+  },
+
+  bootstrapAdminUser: async () => {
+    return apiFetch('/api/users/admin/bootstrap', { method: 'POST' });
   },
 };
 
@@ -155,6 +163,10 @@ window.LeaveService = {
 
   getFacultyPending: async () => {
     return apiFetch('/api/faculty/pending', { headers: buildRoleHeaders({ role: 'faculty' }) });
+  },
+
+  getFacultyOwnLeaveSummary: async () => {
+    return apiFetch('/api/faculty/my-leaves/summary', { headers: buildRoleHeaders({ role: 'faculty' }) });
   },
 
   facultyApplyLeave: async (data) => {
@@ -280,6 +292,12 @@ window.NotificationService = {
   getUnreadCount: async () => {
     const notifications = await window.NotificationService.getNotifications();
     return notifications.filter(n => !n.read).length;
+  },
+};
+
+window.SystemService = {
+  getHealth: async () => {
+    return apiFetch('/api/health');
   },
 };
 

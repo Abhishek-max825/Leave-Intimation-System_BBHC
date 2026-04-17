@@ -68,6 +68,27 @@ const facultyPending = async (req, res, next) => {
   }
 };
 
+const facultyOwnLeaveSummary = async (req, res, next) => {
+  try {
+    const facultyId = req.user?.userId || req.header("x-user-id");
+    if (!facultyId) {
+      return res.status(400).json({ message: "x-user-id is required." });
+    }
+
+    const scope = { studentId: facultyId, applicantRole: "faculty" };
+    const [total, pending, approved, rejected] = await Promise.all([
+      Leave.countDocuments(scope),
+      Leave.countDocuments({ ...scope, status: "pending" }),
+      Leave.countDocuments({ ...scope, status: "approved" }),
+      Leave.countDocuments({ ...scope, status: "rejected" }),
+    ]);
+
+    return res.status(200).json({ total, pending, approved, rejected });
+  } catch (error) {
+    return next(error);
+  }
+};
+
 const facultyApplyLeave = async (req, res, next) => {
   try {
     const facultyId = req.user?.userId || req.header("x-user-id");
@@ -191,6 +212,7 @@ const facultyUpdateLeave = async (req, res, next) => {
 module.exports = {
   facultyDashboard,
   facultyPending,
+  facultyOwnLeaveSummary,
   facultyApplyLeave,
   facultyUpdateLeave,
 };

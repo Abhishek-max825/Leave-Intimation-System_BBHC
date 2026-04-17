@@ -669,6 +669,7 @@ function Sidebar({ currentPage, onNavigate, student, unreadCount, onToggleDark, 
       : role === 'admin'
         ? [
             { page: 'dashboard', icon: 'LayoutDashboard', label: 'Admin Dashboard' },
+            { page: 'admin-approvals', icon: 'ClipboardCheck', label: 'Approvals' },
             { page: 'notifications', icon: 'Bell', label: 'Notifications', badge: unreadCount },
             { page: 'profile', icon: 'UserCircle', label: 'Profile' },
           ]
@@ -771,6 +772,7 @@ window.Sidebar = Sidebar;
 function MobileHeader({ currentPage, onOpenMenu, student, unreadCount, onNavigate }) {
   const pageNames = {
     dashboard: 'Dashboard',
+    'admin-approvals': 'Admin Approvals',
     apply: 'Apply Leave',
     'faculty-apply': 'Apply Leave',
     history: 'Leave History',
@@ -841,6 +843,7 @@ function MobileBottomNav({ currentPage, onNavigate, unreadCount, student }) {
     : role === 'admin'
       ? [
           { page: 'dashboard', icon: 'LayoutDashboard', label: 'Home' },
+          { page: 'admin-approvals', icon: 'ClipboardCheck', label: 'Approve' },
           { page: 'notifications', icon: 'Bell', label: 'Alerts', badge: unreadCount },
           { page: 'profile', icon: 'UserCircle', label: 'Profile' },
         ]
