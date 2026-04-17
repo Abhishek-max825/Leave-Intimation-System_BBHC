@@ -6,6 +6,7 @@ const {
   facultyOwnLeaveSummary,
   facultyApplyLeave,
   facultyUpdateLeave,
+  facultyForwardToAdmin,
 } = require("../controllers/facultyController");
 
 const router = express.Router();
@@ -18,6 +19,7 @@ router.get("/pending", facultyPending);
 router.get("/my-leaves/summary", facultyOwnLeaveSummary);
 router.post("/apply", facultyApplyLeave);
 router.put("/leave/:id", facultyUpdateLeave);
+router.put("/leave/:id/forward", facultyForwardToAdmin);
 
 module.exports = router;
 

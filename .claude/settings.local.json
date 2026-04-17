@@ -1,0 +1,8 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(node -c routes/facultyRoutes.js)",
+      "Bash(node -c controllers/facultyController.js)"
+    ]
+  }
+}

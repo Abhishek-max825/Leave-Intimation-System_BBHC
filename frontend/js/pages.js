@@ -646,6 +646,17 @@ function FacultyDashboardPage({ loading, data, onNavigate }) {
     }
   };
 
+  const forwardToAdmin = async (id) => {
+    try {
+      const forwardReason = window.prompt('Reason for forwarding to admin (optional):', '') || '';
+      await window.LeaveService.facultyForwardToAdmin(id, forwardReason);
+      addToast('Leave forwarded to admin successfully', 'success');
+      loadPending();
+    } catch (e) {
+      addToast(e.message || 'Failed to forward leave', 'error');
+    }
+  };
+
   return React.createElement('div', { className: 'p-6 space-y-5 page-enter' },
     React.createElement('div', { className: 'flex items-center justify-between' },
       React.createElement('div', null,
@@ -685,7 +696,8 @@ function FacultyDashboardPage({ loading, data, onNavigate }) {
                       ),
                       React.createElement('div', { className: 'flex gap-2' },
                         React.createElement(Button, { variant: 'success', onClick: () => decide(l.leaveId, 'approved') }, 'Approve'),
-                        React.createElement(Button, { variant: 'danger', onClick: () => decide(l.leaveId, 'rejected') }, 'Reject')
+                        React.createElement(Button, { variant: 'danger', onClick: () => decide(l.leaveId, 'rejected') }, 'Reject'),
+                        React.createElement(Button, { variant: 'secondary', onClick: () => forwardToAdmin(l.leaveId) }, 'Forward to Admin')
                       )
                     )
                   )

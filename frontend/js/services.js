@@ -185,6 +185,22 @@ window.LeaveService = {
     });
   },
 
+  facultyForwardToAdmin: async (leaveId, reason = '') => {
+    const session = getSession();
+    if (!session?.userId) {
+      throw new Error('Please log in as faculty to perform this action');
+    }
+    return apiFetch(`/api/faculty/leave/${leaveId}/forward`, {
+      method: 'PUT',
+      headers: {
+        'x-user-role': 'faculty',
+        'x-user-id': session.userId,
+        'x-user-name': session.name || '',
+      },
+      body: { reason },
+    });
+  },
+
   getAdminUsers: async () => {
     return apiFetch('/api/admin/users', { headers: buildRoleHeaders({ role: 'admin' }) });
   },

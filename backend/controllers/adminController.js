@@ -41,7 +41,6 @@ const adminDashboard = async (req, res, next) => {
       Leave.countDocuments({
         status: "pending",
         approverRole: "admin",
-        applicantRole: "faculty",
       }),
       User.countDocuments({}),
       User.countDocuments({ role: "student" }),
@@ -99,10 +98,14 @@ const adminLeaves = async (req, res, next) => {
 
 const adminPending = async (req, res, next) => {
   try {
+    // Get both faculty leaves and forwarded student leaves
     const leaves = await Leave.find({
       status: "pending",
       approverRole: "admin",
-      applicantRole: "faculty",
+      $or: [
+        { applicantRole: "faculty" },
+        { applicantRole: "student", decisionReason: /forwarded/i }
+      ]
     }).sort({ createdAt: -1 });
     return res.status(200).json(leaves.map(shapeLeave));
   } catch (error) {
@@ -121,8 +124,11 @@ const adminUpdateLeave = async (req, res, next) => {
 
     const leave = await Leave.findById(id);
     if (!leave) return res.status(404).json({ message: "Leave not found." });
-    if (leave.approverRole !== "admin" || leave.applicantRole !== "faculty") {
-      return res.status(403).json({ message: "Admin can only process faculty leave requests." });
+    if (leave.approverRole !== "admin") {
+      return res.status(403).json({ message: "Admin can only process leaves assigned to admin." });
+    }
+    if (leave.applicantRole !== "faculty" && leave.applicantRole !== "student") {
+      return res.status(403).json({ message: "Invalid applicant role." });
     }
 
     leave.status = String(status).toLowerCase();
@@ -134,7 +140,7 @@ const adminUpdateLeave = async (req, res, next) => {
       const reasonText = leave.decisionReason ? ` Reason: ${leave.decisionReason}` : "";
       await createNotification({
         recipientUserId: leave.studentId,
-        recipientRole: "faculty",
+        recipientRole: leave.applicantRole,
         title: `Leave ${action} by admin`,
         message: `Your leave request was ${action} by admin.${reasonText}`,
         type: "leave_status",

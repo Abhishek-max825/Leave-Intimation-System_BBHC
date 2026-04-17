@@ -209,11 +209,77 @@ const facultyUpdateLeave = async (req, res, next) => {
   }
 };
 
+const facultyForwardToAdmin = async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const { reason } = req.body;
+    const facultyName = await resolveFacultyName(req);
+
+    const leave = await Leave.findById(id);
+    if (!leave) {
+      return res.status(404).json({ message: "Leave not found." });
+    }
+
+    // Only allow forwarding if it's a student leave pending with faculty
+    if (leave.approverRole !== "faculty" || leave.applicantRole !== "student") {
+      return res.status(403).json({ message: "Faculty can only forward student leave requests." });
+    }
+
+    if (leave.status !== "pending") {
+      return res.status(400).json({ message: "Can only forward pending leave requests." });
+    }
+
+    // Update leave to be forwarded to admin
+    leave.approverRole = "admin";
+    leave.decisionReason = reason ? String(reason).trim() : "Forwarded to admin for review";
+    await leave.save();
+
+    // Notify admin users
+    const adminUsers = await User.find({ role: "admin" }).select("_id");
+    if (adminUsers.length > 0) {
+      await Promise.all(
+        adminUsers.map((adminUser) =>
+          createNotification({
+            recipientUserId: adminUser._id,
+            recipientRole: "admin",
+            title: "Leave forwarded by faculty",
+            message: `${facultyName || "Faculty"} forwarded a student leave request (${leave.leaveType}, ${leave.duration} day(s)) for your review.`,
+            type: "leave_request",
+            leaveId: leave._id,
+          })
+        )
+      );
+    }
+
+    // Notify student
+    if (leave.studentId) {
+      await createNotification({
+        recipientUserId: leave.studentId,
+        recipientRole: "student",
+        title: "Leave forwarded to admin",
+        message: `Your leave request has been forwarded to admin by ${facultyName || "faculty"} for further review.`,
+        type: "leave_status",
+        leaveId: leave._id,
+      });
+    }
+
+    console.log("Notification: Leave forwarded to admin");
+
+    return res.status(200).json({
+      ...shapeLeave(leave),
+      message: "Leave forwarded to admin successfully",
+    });
+  } catch (error) {
+    return next(error);
+  }
+};
+
 module.exports = {
   facultyDashboard,
   facultyPending,
   facultyOwnLeaveSummary,
   facultyApplyLeave,
   facultyUpdateLeave,
+  facultyForwardToAdmin,
 };
 
